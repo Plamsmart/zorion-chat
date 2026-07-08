@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoutButton } from "@/components/admin/LogoutButton";
 
 export default function AdminLayout({
   children,
@@ -32,12 +33,7 @@ export default function AdminLayout({
           >
             Ver demo
           </Link>
-          <Link
-            href="/"
-            className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/5 hover:text-white"
-          >
-            Cerrar sesión
-          </Link>
+          <LogoutButton />
         </div>
       </aside>
 

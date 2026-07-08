@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { comoCookieDeSesion } from "./cookies";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -15,10 +16,10 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, comoCookieDeSesion(options))
             );
           } catch {
-            // Se llama desde un Server Component; la sesión se refresca en el middleware.
+            // Se llama desde un Server Component; la sesión se refresca en el proxy.
           }
         },
       },
