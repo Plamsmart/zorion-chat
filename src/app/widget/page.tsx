@@ -1,8 +1,18 @@
 import { ChatWidget } from "@/components/chat/ChatWidget";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Bot } from "@/types";
 
 const BOT_ID_DEMO = "bb5dc8b8-4651-4a81-bd3d-03a890187020";
 
-export default function WidgetPage() {
+export default async function WidgetPage() {
+  const supabase = createAdminClient();
+
+  const { data: bot } = await supabase
+    .from("bots")
+    .select("nombre, color_primario")
+    .eq("id", BOT_ID_DEMO)
+    .maybeSingle<Pick<Bot, "nombre" | "color_primario">>();
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
       <h1 className="text-2xl font-semibold">Demo del widget</h1>
@@ -14,8 +24,8 @@ export default function WidgetPage() {
 
       <ChatWidget
         botId={BOT_ID_DEMO}
-        nombre="Zorion Demo"
-        colorPrimario="#4f46e5"
+        botNombre={bot?.nombre ?? "Zorion Demo"}
+        colorPrimario={bot?.color_primario ?? "#4f46e5"}
       />
     </div>
   );

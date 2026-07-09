@@ -5,13 +5,42 @@ import { useChatSession, type ChatMessage } from "./useChatSession";
 
 interface ChatWidgetProps {
   botId: string;
-  nombre?: string;
+  botNombre?: string;
   colorPrimario?: string;
+}
+
+function hexARgb(hex: string) {
+  const limpio = hex.replace("#", "");
+  const normalizado =
+    limpio.length === 3
+      ? limpio
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : limpio;
+  const bigint = parseInt(normalizado, 16);
+
+  return {
+    r: (bigint >> 16) & 255,
+    g: (bigint >> 8) & 255,
+    b: bigint & 255,
+  };
+}
+
+function colorTextoContraste(colorHex: string) {
+  const { r, g, b } = hexARgb(colorHex);
+  const luminancia = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminancia > 0.6 ? "#111827" : "#ffffff";
+}
+
+function tinteClaro(colorHex: string, alpha = 0.12) {
+  const { r, g, b } = hexARgb(colorHex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export function ChatWidget({
   botId,
-  nombre = "Asistente",
+  botNombre = "Asistente",
   colorPrimario = "#000000",
 }: ChatWidgetProps) {
   const [abierto, setAbierto] = useState(false);
@@ -24,6 +53,9 @@ export function ChatWidget({
   const audioUrlsRef = useRef<Map<string, string>>(new Map());
   const [reproduciendoId, setReproduciendoId] = useState<string | null>(null);
   const [cargandoAudioId, setCargandoAudioId] = useState<string | null>(null);
+
+  const colorTexto = colorTextoContraste(colorPrimario);
+  const colorTinteAsistente = tinteClaro(colorPrimario);
 
   useEffect(() => {
     mensajesRef.current?.scrollTo({
@@ -96,10 +128,10 @@ export function ChatWidget({
       {abierto && (
         <div className="flex h-[32rem] w-80 flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl">
           <header
-            className="flex items-center justify-between px-4 py-3 text-white"
-            style={{ backgroundColor: colorPrimario }}
+            className="flex items-center justify-between px-4 py-3"
+            style={{ backgroundColor: colorPrimario, color: colorTexto }}
           >
-            <span className="font-semibold">{nombre}</span>
+            <span className="font-semibold">{botNombre}</span>
             <button
               type="button"
               onClick={() => setAbierto(false)}
@@ -139,14 +171,12 @@ export function ChatWidget({
               >
                 <div
                   className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm ${
-                    m.rol === "user"
-                      ? "text-white"
-                      : "bg-gray-200 text-gray-900"
+                    m.rol === "assistant" ? "text-gray-900" : ""
                   }`}
                   style={
                     m.rol === "user"
-                      ? { backgroundColor: colorPrimario }
-                      : undefined
+                      ? { backgroundColor: colorPrimario, color: colorTexto }
+                      : { backgroundColor: colorTinteAsistente }
                   }
                 >
                   {m.contenido}
@@ -239,8 +269,8 @@ export function ChatWidget({
               type="submit"
               disabled={!texto.trim() || enviando}
               aria-label="Enviar mensaje"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40"
-              style={{ backgroundColor: colorPrimario }}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-40"
+              style={{ backgroundColor: colorPrimario, color: colorTexto }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M2 21l21-9L2 3v7l15 2-15 2z" />
@@ -254,8 +284,8 @@ export function ChatWidget({
         type="button"
         onClick={() => setAbierto((v) => !v)}
         aria-label={abierto ? "Cerrar chat" : "Abrir chat"}
-        className="flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105"
-        style={{ backgroundColor: colorPrimario }}
+        className="flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition hover:scale-105"
+        style={{ backgroundColor: colorPrimario, color: colorTexto }}
       >
         {abierto ? (
           <svg
