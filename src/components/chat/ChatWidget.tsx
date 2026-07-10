@@ -39,6 +39,9 @@ function tinteClaro(colorHex: string, alpha = 0.12) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+const TAMANO_CERRADO = { width: 70, height: 70 };
+const TAMANO_ABIERTO = { width: 420, height: 620 };
+
 export function ChatWidget({
   botId,
   botNombre = "Asistente",
@@ -72,6 +75,16 @@ export function ChatWidget({
       urls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
+
+  useEffect(() => {
+    if (window.parent === window) return;
+
+    const { width, height } = abierto ? TAMANO_ABIERTO : TAMANO_CERRADO;
+    window.parent.postMessage(
+      { source: "zorion-chat-widget", type: "resize", abierto, width, height },
+      "*"
+    );
+  }, [abierto]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -126,7 +139,11 @@ export function ChatWidget({
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4">
+    <div
+      className={`fixed z-50 flex flex-col items-end gap-4 ${
+        abierto ? "bottom-6 right-6" : "bottom-[7px] right-[7px]"
+      }`}
+    >
       {abierto && (
         <div className="flex h-[32rem] w-80 flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl">
           <header

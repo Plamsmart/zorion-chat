@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
   await guardarMensaje(conversacion.id, "user", body);
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-4o",
     messages,
   });
 
