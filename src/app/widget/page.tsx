@@ -2,16 +2,18 @@ import { ChatWidget } from "@/components/chat/ChatWidget";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Bot } from "@/types";
 
-const BOT_ID_DEMO = "bb5dc8b8-4651-4a81-bd3d-03a890187020";
+const BOT_ID_DEMO = process.env.NEXT_PUBLIC_DEMO_BOT_ID;
 
 export default async function WidgetPage() {
   const supabase = createAdminClient();
 
-  const { data: bot } = await supabase
-    .from("bots")
-    .select("nombre, color_primario")
-    .eq("id", BOT_ID_DEMO)
-    .maybeSingle<Pick<Bot, "nombre" | "color_primario">>();
+  const { data: bot } = BOT_ID_DEMO
+    ? await supabase
+        .from("bots")
+        .select("nombre, color_primario, logo_url")
+        .eq("id", BOT_ID_DEMO)
+        .maybeSingle<Pick<Bot, "nombre" | "color_primario" | "logo_url">>()
+    : { data: null };
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
@@ -22,11 +24,19 @@ export default async function WidgetPage() {
         derecha para probarlo.
       </p>
 
-      <ChatWidget
-        botId={BOT_ID_DEMO}
-        botNombre={bot?.nombre ?? "Zorion Demo"}
-        colorPrimario={bot?.color_primario ?? "#4f46e5"}
-      />
+      {BOT_ID_DEMO ? (
+        <ChatWidget
+          botId={BOT_ID_DEMO}
+          botNombre={bot?.nombre ?? "Zorion Demo"}
+          colorPrimario={bot?.color_primario ?? "#4f46e5"}
+          logoUrl={bot?.logo_url}
+        />
+      ) : (
+        <p className="text-sm text-red-500">
+          Configura la variable de entorno NEXT_PUBLIC_DEMO_BOT_ID para ver la
+          demo del widget.
+        </p>
+      )}
     </div>
   );
 }

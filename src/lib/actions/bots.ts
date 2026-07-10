@@ -10,6 +10,7 @@ function leerCamposBot(formData: FormData) {
     empresa: String(formData.get("empresa") ?? "").trim(),
     descripcion: String(formData.get("descripcion") ?? "").trim() || null,
     color_primario: String(formData.get("color_primario") ?? "#000000"),
+    logo_url: String(formData.get("logo_url") ?? "").trim() || null,
     whatsapp_numero:
       String(formData.get("whatsapp_numero") ?? "").trim() || null,
     activo: formData.get("activo") === "on",

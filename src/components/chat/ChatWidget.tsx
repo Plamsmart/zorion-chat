@@ -7,6 +7,7 @@ interface ChatWidgetProps {
   botId: string;
   botNombre?: string;
   colorPrimario?: string;
+  logoUrl?: string | null;
 }
 
 function hexARgb(hex: string) {
@@ -42,6 +43,7 @@ export function ChatWidget({
   botId,
   botNombre = "Asistente",
   colorPrimario = "#000000",
+  logoUrl,
 }: ChatWidgetProps) {
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState("");
@@ -131,7 +133,17 @@ export function ChatWidget({
             className="flex items-center justify-between px-4 py-3"
             style={{ backgroundColor: colorPrimario, color: colorTexto }}
           >
-            <span className="font-semibold">{botNombre}</span>
+            <div className="flex items-center gap-2">
+              {logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- logoUrl may be an external URL not covered by next/image's remotePatterns config.
+                <img
+                  src={logoUrl}
+                  alt=""
+                  className="h-7 w-7 rounded-full object-cover"
+                />
+              )}
+              <span className="font-semibold">{botNombre}</span>
+            </div>
             <button
               type="button"
               onClick={() => setAbierto(false)}
@@ -272,7 +284,12 @@ export function ChatWidget({
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-40"
               style={{ backgroundColor: colorPrimario, color: colorTexto }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
                 <path d="M2 21l21-9L2 3v7l15 2-15 2z" />
               </svg>
             </button>

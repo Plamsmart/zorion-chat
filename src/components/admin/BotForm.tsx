@@ -110,6 +110,28 @@ export function BotForm({ action, bot }: BotFormProps) {
 
       <div>
         <label
+          htmlFor="logo_url"
+          className="block text-sm font-medium text-gray-700"
+        >
+          Logo
+        </label>
+        <p className="mt-1 text-xs text-gray-400">
+          Coloca el archivo en la carpeta <code>public/</code> del proyecto y
+          escribe aquí su ruta (ej. <code>/logo.png</code>), o pega la URL de
+          una imagen externa.
+        </p>
+        <input
+          id="logo_url"
+          name="logo_url"
+          type="text"
+          defaultValue={bot?.logo_url ?? ""}
+          placeholder="/logo.png"
+          className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-black"
+        />
+      </div>
+
+      <div>
+        <label
           htmlFor="whatsapp_numero"
           className="block text-sm font-medium text-gray-700"
         >
