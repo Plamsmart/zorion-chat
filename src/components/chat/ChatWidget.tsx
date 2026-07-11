@@ -39,6 +39,31 @@ function tinteClaro(colorHex: string, alpha = 0.12) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function colorEnlaceContraste(colorHex: string) {
+  const { r, g, b } = hexARgb(colorHex);
+  const luminancia = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminancia > 0.6 ? "#1d4ed8" : "#fbbf24";
+}
+
+function escaparHtml(texto: string) {
+  return texto
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function parsearTexto(texto: string, colorEnlace: string) {
+  const escapado = escaparHtml(texto);
+  const conEnlaces = escapado.replace(
+    /(https?:\/\/[^\s<]*[^\s<.,)\]!])/g,
+    (url) =>
+      `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:${colorEnlace};text-decoration:underline;">${url}</a>`
+  );
+  return conEnlaces.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
 const TAMANO_CERRADO = { width: 70, height: 70 };
 const TAMANO_ABIERTO = { width: 420, height: 620 };
 
@@ -61,6 +86,8 @@ export function ChatWidget({
 
   const colorTexto = colorTextoContraste(colorPrimario);
   const colorTinteAsistente = tinteClaro(colorPrimario);
+  const colorEnlaceUsuario = colorEnlaceContraste(colorPrimario);
+  const colorEnlaceAsistente = "#1d4ed8";
 
   useEffect(() => {
     mensajesRef.current?.scrollTo({
@@ -208,7 +235,16 @@ export function ChatWidget({
                       : { backgroundColor: colorTinteAsistente }
                   }
                 >
-                  {m.contenido}
+                  <span
+                    dangerouslySetInnerHTML={{
+                      __html: parsearTexto(
+                        m.contenido,
+                        m.rol === "user"
+                          ? colorEnlaceUsuario
+                          : colorEnlaceAsistente
+                      ),
+                    }}
+                  />
                   {m.rol === "assistant" && (
                     <button
                       type="button"
