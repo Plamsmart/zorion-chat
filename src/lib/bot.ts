@@ -210,18 +210,17 @@ export async function construirSystemPrompt(
   let contextoCalendario = "";
   if (aimharderEstaConfigurado()) {
     const hoy = new Date();
-    const fechaHoy = formatearFechaISO(hoy);
-    const fechaManana = formatearFechaISO(sumarDias(hoy, 1));
+    const fechas = Array.from({ length: 7 }, (_, i) =>
+      formatearFechaISO(sumarDias(hoy, i))
+    );
 
-    const [clasesHoy, clasesManana] = await Promise.all([
-      obtenerClasesCalendario(fechaHoy),
-      obtenerClasesCalendario(fechaManana),
-    ]);
+    const clasesPorFecha = await Promise.all(
+      fechas.map((fecha) => obtenerClasesCalendario(fecha))
+    );
 
-    contextoCalendario = [
-      formatearClasesParaPrompt(fechaHoy, clasesHoy),
-      formatearClasesParaPrompt(fechaManana, clasesManana),
-    ].join("\n\n");
+    contextoCalendario = fechas
+      .map((fecha, i) => formatearClasesParaPrompt(fecha, clasesPorFecha[i]))
+      .join("\n\n");
   }
 
   // TODO(debug-aimharder): quitar una vez confirmado el origen del problema en producción.
