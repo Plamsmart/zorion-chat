@@ -43,8 +43,7 @@ interface RespuestaRefresh {
 async function peticionAimharder<T>(
   ruta: string,
   init: RequestInit = {},
-  reintentando = false,
-  debug = false
+  reintentando = false
 ): Promise<T> {
   const respuesta = await fetch(`${AIMHARDER_BASE_URL}${ruta}`, {
     ...init,
@@ -54,17 +53,9 @@ async function peticionAimharder<T>(
     },
   });
 
-  if (debug) {
-    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
-    console.log("[debug-aimharder-reserva] respuesta cruda de Aimharder ->", {
-      status: respuesta.status,
-      headers: Object.fromEntries(respuesta.headers.entries()),
-    });
-  }
-
   if (respuesta.status === 410 && !reintentando) {
     await refrescarToken();
-    return peticionAimharder<T>(ruta, init, true, debug);
+    return peticionAimharder<T>(ruta, init, true);
   }
 
   if (!respuesta.ok) {
@@ -73,17 +64,7 @@ async function peticionAimharder<T>(
     );
   }
 
-  const datos = (await respuesta.json()) as T;
-
-  if (debug) {
-    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
-    console.log(
-      "[debug-aimharder-reserva] body parseado de Aimharder ->",
-      datos
-    );
-  }
-
-  return datos;
+  return (await respuesta.json()) as T;
 }
 
 export async function getCalendario(fecha: string): Promise<ClaseAimharder[]> {
@@ -100,15 +81,10 @@ export async function crearReservaInvitado(
 ): Promise<number> {
   const respuesta = await peticionAimharder<{
     data?: { message?: string; id?: number };
-  }>(
-    "/classes/booking/guest",
-    {
-      method: "POST",
-      body: JSON.stringify(datos),
-    },
-    false,
-    true
-  );
+  }>("/classes/booking/guest", {
+    method: "POST",
+    body: JSON.stringify(datos),
+  });
 
   const bookingId = respuesta.data?.id;
   if (bookingId === undefined) {

@@ -335,21 +335,8 @@ async function buscarClaseCoincidente(
   const claseNormalizada = claseTexto.toLowerCase();
   const horaNormalizada = horaTexto?.toLowerCase();
 
-  // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
-  console.log("[debug-aimharder-reserva] buscarClaseCoincidente buscando ->", {
-    claseTexto,
-    horaTexto,
-    fechas,
-  });
-
   for (const fecha of fechas) {
     const clases = await obtenerClasesCalendario(fecha);
-
-    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
-    console.log("[debug-aimharder-reserva] clases del calendario ->", {
-      fecha,
-      clases: clases.map((c) => ({ id: c.id, nombre: c.nombre, hora: c.hora })),
-    });
 
     const encontrada = clases.find((c) => {
       const nombreCoincide = c.nombre.toLowerCase().includes(claseNormalizada);
@@ -413,15 +400,6 @@ export async function procesarIntencionReserva(
     telefono: datos.telefono,
   };
 
-  // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
-  console.log("[debug-aimharder-reserva] payload enviado ->", {
-    fecha: payload.fecha,
-    claseId: payload.claseId,
-    nombre: payload.nombre,
-    email: payload.email,
-    telefono: payload.telefono,
-  });
-
   try {
     const respuesta = await fetch(
       `${obtenerBaseUrl()}/api/aimharder/reserva`,
@@ -437,13 +415,6 @@ export async function procesarIntencionReserva(
       error?: string;
     };
 
-    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
-    console.log("[debug-aimharder-reserva] respuesta recibida ->", {
-      status: respuesta.status,
-      ok: respuesta.ok,
-      cuerpo,
-    });
-
     if (!respuesta.ok) {
       return `No se pudo completar la reserva${
         cuerpo.error ? `: ${cuerpo.error}` : ""
@@ -451,12 +422,7 @@ export async function procesarIntencionReserva(
     }
 
     return `¡Listo, ${datos.nombre}! Tu reserva para "${clase.nombre}" (${clase.hora}) ha sido confirmada. Número de reserva: ${cuerpo.bookingId}.`;
-  } catch (error) {
-    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
-    console.log("[debug-aimharder-reserva] error atrapado ->", {
-      payload,
-      error,
-    });
+  } catch {
     return "Ocurrió un error al procesar tu reserva. Por favor, inténtalo de nuevo más tarde.";
   }
 }
