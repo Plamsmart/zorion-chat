@@ -14,7 +14,7 @@ let refreshTokenActual = process.env.AIMHARDER_REFRESH_TOKEN ?? "";
  * la respuesta real de la API difiere.
  */
 export interface ClaseAimharder {
-  id: number;
+  schedule_id: number;
   name: string;
   time: string;
   timeid: number;
@@ -25,11 +25,14 @@ export interface ClaseAimharder {
 }
 
 export interface DatosReservaInvitado {
-  fecha: string;
-  claseId: number;
-  nombre: string;
-  email?: string;
-  telefono?: string;
+  schedule_id: number;
+  booking_date: string;
+  name: string;
+  first_surname: string;
+  second_surname: string;
+  email: string;
+  phone: string;
+  booking_notes: string;
 }
 
 interface RespuestaRefresh {
@@ -40,7 +43,8 @@ interface RespuestaRefresh {
 async function peticionAimharder<T>(
   ruta: string,
   init: RequestInit = {},
-  reintentando = false
+  reintentando = false,
+  debug = false
 ): Promise<T> {
   const respuesta = await fetch(`${AIMHARDER_BASE_URL}${ruta}`, {
     ...init,
@@ -50,9 +54,17 @@ async function peticionAimharder<T>(
     },
   });
 
+  if (debug) {
+    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
+    console.log("[debug-aimharder-reserva] respuesta cruda de Aimharder ->", {
+      status: respuesta.status,
+      headers: Object.fromEntries(respuesta.headers.entries()),
+    });
+  }
+
   if (respuesta.status === 410 && !reintentando) {
     await refrescarToken();
-    return peticionAimharder<T>(ruta, init, true);
+    return peticionAimharder<T>(ruta, init, true, debug);
   }
 
   if (!respuesta.ok) {
@@ -61,7 +73,17 @@ async function peticionAimharder<T>(
     );
   }
 
-  return (await respuesta.json()) as T;
+  const datos = (await respuesta.json()) as T;
+
+  if (debug) {
+    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
+    console.log(
+      "[debug-aimharder-reserva] body parseado de Aimharder ->",
+      datos
+    );
+  }
+
+  return datos;
 }
 
 export async function getCalendario(fecha: string): Promise<ClaseAimharder[]> {
@@ -77,14 +99,18 @@ export async function crearReservaInvitado(
   datos: DatosReservaInvitado
 ): Promise<number> {
   const respuesta = await peticionAimharder<{
-    bookingId?: number;
-    id?: number;
-  }>("/classes/booking/guest", {
-    method: "POST",
-    body: JSON.stringify(datos),
-  });
+    data?: { message?: string; id?: number };
+  }>(
+    "/classes/booking/guest",
+    {
+      method: "POST",
+      body: JSON.stringify(datos),
+    },
+    false,
+    true
+  );
 
-  const bookingId = respuesta.bookingId ?? respuesta.id;
+  const bookingId = respuesta.data?.id;
   if (bookingId === undefined) {
     throw new Error("Aimharder no devolvió un booking_id en la reserva");
   }

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const clases = await getCalendario(fecha);
 
     const clasesFormateadas = clases.map((clase) => ({
-      id: clase.id,
+      id: clase.schedule_id,
       nombre: clase.name,
       hora: clase.time,
       plazasLibres: Math.max(clase.limit - clase.ocupation, 0),

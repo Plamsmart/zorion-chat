@@ -1,4 +1,5 @@
 import { getCalendario } from "@/lib/aimharder";
+import { openai } from "@/lib/openai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Bot, Canal, Conocimiento, Conversacion, Mensaje } from "@/types";
 
@@ -123,7 +124,7 @@ async function obtenerClasesCalendario(
     const clases = await getCalendario(fecha);
 
     return clases.map((clase) => ({
-      id: clase.id,
+      id: clase.schedule_id,
       nombre: clase.name,
       hora: clase.time,
       plazasLibres: Math.max(clase.limit - clase.ocupation, 0),
@@ -245,43 +246,117 @@ interface DatosReservaDetectados {
   email?: string;
   telefono?: string;
   clase?: string;
+  hora?: string;
+  fecha?: string;
 }
 
-const PALABRAS_CLAVE_RESERVA = /reserv|apuntar|apuntarme|inscrib|agendar/i;
+const PALABRAS_CLAVE_RESERVA =
+  /reserv|apuntar|apuntarme|inscrib|agendar|clase de prueba|prueba|quiero ir|me gustaría ir|puedo ir|puedo asistir|me anoto/i;
 const REGEX_EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 const REGEX_TELEFONO = /\+?\d[\d\s-]{7,}\d/;
 
-export function detectarIntencionReserva(texto: string): boolean {
-  return PALABRAS_CLAVE_RESERVA.test(texto);
+function contieneDatosReserva(texto: string): boolean {
+  return REGEX_EMAIL.test(texto) || REGEX_TELEFONO.test(texto);
 }
 
-function extraerDatosReserva(texto: string): DatosReservaDetectados {
-  const email = texto.match(REGEX_EMAIL)?.[0];
-  const telefono = texto.match(REGEX_TELEFONO)?.[0]?.replace(/[\s-]/g, "");
-  const nombre = texto
-    .match(/nombre(?:\s+completo)?\s*[:\-]\s*([^\n,;]+)/i)?.[1]
-    ?.trim();
-  const clase = texto
-    .match(/(?:clase|horario)\s*[:\-]\s*([^\n,;]+)/i)?.[1]
-    ?.trim();
+export async function detectarIntencionReserva(
+  texto: string,
+  conversacionId?: string
+): Promise<boolean> {
+  if (PALABRAS_CLAVE_RESERVA.test(texto)) {
+    return true;
+  }
 
-  return { nombre, email, telefono, clase };
+  if (!conversacionId) {
+    return false;
+  }
+
+  const historial = await obtenerHistorial(conversacionId);
+  return historial.some(
+    (m) => m.rol === "user" && PALABRAS_CLAVE_RESERVA.test(m.contenido)
+  );
+}
+
+function construirPromptExtraccionReserva() {
+  const hoy = new Date().toISOString().split("T")[0];
+
+  return `Extrae del siguiente mensaje y del historial de conversación estos datos para una reserva: nombre completo, email, teléfono, nombre de la clase, hora y fecha. La fecha debe devolverse en formato YYYY-MM-DD, interpretando expresiones relativas como "mañana", "el martes" o "el 14 de julio" tomando como referencia que hoy es ${hoy}. Responde SOLO con un JSON con estos campos: { nombre, email, telefono, clase, hora, fecha }. Si algún campo no está disponible ponlo como null.`;
+}
+
+interface DatosExtraidosIA {
+  nombre: string | null;
+  email: string | null;
+  telefono: string | null;
+  clase: string | null;
+  hora: string | null;
+  fecha: string | null;
+}
+
+async function extraerDatosReservaConIA(
+  mensaje: string,
+  historial: Mensaje[]
+): Promise<DatosReservaDetectados> {
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o",
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: construirPromptExtraccionReserva() },
+      ...historial.map((m) => ({ role: m.rol, content: m.contenido })),
+      { role: "user", content: mensaje },
+    ],
+  });
+
+  const contenido = completion.choices[0]?.message?.content ?? "{}";
+
+  try {
+    const datos = JSON.parse(contenido) as DatosExtraidosIA;
+    return {
+      nombre: datos.nombre ?? undefined,
+      email: datos.email ?? undefined,
+      telefono: datos.telefono ?? undefined,
+      clase: datos.clase ?? undefined,
+      hora: datos.hora ?? undefined,
+      fecha: datos.fecha ?? undefined,
+    };
+  } catch {
+    return {};
+  }
 }
 
 async function buscarClaseCoincidente(
-  descripcion: string
+  claseTexto: string,
+  horaTexto?: string,
+  fechaTexto?: string
 ): Promise<ClaseCalendarioBot | null> {
   const hoy = new Date();
-  const fechas = [formatearFechaISO(hoy), formatearFechaISO(sumarDias(hoy, 1))];
-  const normalizado = descripcion.toLowerCase();
+  const fechas = fechaTexto
+    ? [fechaTexto]
+    : [formatearFechaISO(hoy), formatearFechaISO(sumarDias(hoy, 1))];
+  const claseNormalizada = claseTexto.toLowerCase();
+  const horaNormalizada = horaTexto?.toLowerCase();
+
+  // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
+  console.log("[debug-aimharder-reserva] buscarClaseCoincidente buscando ->", {
+    claseTexto,
+    horaTexto,
+    fechas,
+  });
 
   for (const fecha of fechas) {
     const clases = await obtenerClasesCalendario(fecha);
-    const encontrada = clases.find(
-      (c) =>
-        normalizado.includes(c.hora.toLowerCase()) ||
-        normalizado.includes(c.nombre.toLowerCase())
-    );
+
+    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
+    console.log("[debug-aimharder-reserva] clases del calendario ->", {
+      fecha,
+      clases: clases.map((c) => ({ id: c.id, nombre: c.nombre, hora: c.hora })),
+    });
+
+    const encontrada = clases.find((c) => {
+      const nombreCoincide = c.nombre.toLowerCase().includes(claseNormalizada);
+      const horaCoincide =
+        !horaNormalizada || c.hora.toLowerCase().includes(horaNormalizada);
+      return nombreCoincide && horaCoincide;
+    });
     if (encontrada) return encontrada;
   }
 
@@ -299,38 +374,19 @@ export async function procesarIntencionReserva(
   mensaje: string,
   conversacionId: string
 ): Promise<string | null> {
-  const historial = await obtenerHistorial(conversacionId);
-  const mensajesUsuario = [
-    ...historial.filter((m) => m.rol === "user").map((m) => m.contenido),
-    mensaje,
-  ];
-
-  if (!mensajesUsuario.some(detectarIntencionReserva)) {
+  if (!PALABRAS_CLAVE_RESERVA.test(mensaje) && !contieneDatosReserva(mensaje)) {
     return null;
   }
 
-  const datos = mensajesUsuario.reduce<DatosReservaDetectados>(
-    (acumulado, texto) => {
-      const extraidos = extraerDatosReserva(texto);
-      return {
-        nombre: extraidos.nombre ?? acumulado.nombre,
-        email: extraidos.email ?? acumulado.email,
-        telefono: extraidos.telefono ?? acumulado.telefono,
-        clase: extraidos.clase ?? acumulado.clase,
-      };
-    },
-    {}
-  );
+  const historial = await obtenerHistorial(conversacionId);
+  const datos = await extraerDatosReservaConIA(mensaje, historial);
 
   const faltantes: string[] = [];
   if (!datos.nombre) faltantes.push("tu nombre completo");
   if (!datos.email) faltantes.push("tu email");
   if (!datos.telefono) faltantes.push("tu teléfono");
-  if (!datos.clase) {
-    faltantes.push(
-      "la clase y el horario exacto que quieres reservar (tal como aparece en el calendario)"
-    );
-  }
+  if (!datos.clase) faltantes.push("el nombre de la clase que quieres reservar");
+  if (!datos.hora) faltantes.push("la hora de la clase");
 
   if (faltantes.length > 0) {
     return `Para completar tu reserva necesito que me indiques: ${faltantes.join(
@@ -338,14 +394,19 @@ export async function procesarIntencionReserva(
     )}.`;
   }
 
-  const clase = await buscarClaseCoincidente(datos.clase!);
+  const fechaReserva = datos.fecha ?? formatearFechaISO(new Date());
+  const clase = await buscarClaseCoincidente(
+    datos.clase!,
+    datos.hora,
+    fechaReserva
+  );
 
   if (!clase) {
-    return `No encontré ninguna clase que coincida con "${datos.clase}" en el calendario de hoy o mañana. ¿Puedes indicarme el nombre u horario exacto tal como aparece en el calendario?`;
+    return `No encontré ninguna clase que coincida con "${datos.clase} a las ${datos.hora}" en el calendario del ${fechaReserva}. ¿Puedes indicarme el nombre u horario exacto tal como aparece en el calendario?`;
   }
 
   const payload = {
-    fecha: formatearFechaISO(new Date()),
+    fecha: fechaReserva,
     claseId: clase.id,
     nombre: datos.nombre,
     email: datos.email,
@@ -353,7 +414,13 @@ export async function procesarIntencionReserva(
   };
 
   // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
-  console.log("[debug-aimharder-reserva] payload enviado ->", payload);
+  console.log("[debug-aimharder-reserva] payload enviado ->", {
+    fecha: payload.fecha,
+    claseId: payload.claseId,
+    nombre: payload.nombre,
+    email: payload.email,
+    telefono: payload.telefono,
+  });
 
   try {
     const respuesta = await fetch(

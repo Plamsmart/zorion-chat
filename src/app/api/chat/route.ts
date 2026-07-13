@@ -27,6 +27,13 @@ function respuestaComoStream(texto: string) {
 export async function POST(request: NextRequest) {
   const { mensaje, bot_id, session_id } = await request.json();
 
+  // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
+  console.log("[debug-aimharder-reserva] POST /api/chat ->", {
+    mensaje,
+    intencionReserva: await detectarIntencionReserva(mensaje),
+    aimharderConfigurado: aimharderEstaConfigurado(),
+  });
+
   if (!mensaje || !bot_id || !session_id) {
     return NextResponse.json(
       { error: "Faltan campos requeridos: mensaje, bot_id, session_id" },
@@ -46,7 +53,10 @@ export async function POST(request: NextRequest) {
     session_id
   );
 
-  if (detectarIntencionReserva(mensaje) && aimharderEstaConfigurado()) {
+  if (
+    (await detectarIntencionReserva(mensaje, conversacion.id)) &&
+    aimharderEstaConfigurado()
+  ) {
     const respuestaReserva = await procesarIntencionReserva(
       mensaje,
       conversacion.id

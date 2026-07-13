@@ -12,13 +12,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const espacioIndex = nombre.indexOf(" ");
+  const name = espacioIndex === -1 ? nombre : nombre.slice(0, espacioIndex);
+  const first_surname =
+    espacioIndex === -1 ? "" : nombre.slice(espacioIndex + 1).trim();
+
   try {
     const bookingId = await crearReservaInvitado({
-      fecha,
-      claseId,
-      nombre,
+      schedule_id: claseId,
+      booking_date: fecha,
+      name,
+      first_surname,
+      second_surname: "",
       email,
-      telefono,
+      phone: telefono,
+      booking_notes: "Reserva desde chatbot Kassandra",
     });
 
     return NextResponse.json({ bookingId });
