@@ -1,11 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openai } from "@/lib/openai";
 import {
+  aimharderEstaConfigurado,
   buscarBotActivoPorId,
   buscarOCrearConversacion,
   construirMensajesParaOpenAI,
+  detectarIntencionReserva,
   guardarMensaje,
+  procesarIntencionReserva,
 } from "@/lib/bot";
+
+function respuestaComoStream(texto: string) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(texto));
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
 
 export async function POST(request: NextRequest) {
   const { mensaje, bot_id, session_id } = await request.json();
@@ -28,6 +45,19 @@ export async function POST(request: NextRequest) {
     "web",
     session_id
   );
+
+  if (detectarIntencionReserva(mensaje) && aimharderEstaConfigurado()) {
+    const respuestaReserva = await procesarIntencionReserva(
+      mensaje,
+      conversacion.id
+    );
+
+    if (respuestaReserva) {
+      await guardarMensaje(conversacion.id, "user", mensaje);
+      await guardarMensaje(conversacion.id, "assistant", respuestaReserva);
+      return respuestaComoStream(respuestaReserva);
+    }
+  }
 
   const messages = await construirMensajesParaOpenAI(
     bot,

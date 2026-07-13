@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openai } from "@/lib/openai";
 import {
+  aimharderEstaConfigurado,
   buscarBotActivoPorWhatsapp,
   buscarOCrearConversacion,
   construirMensajesParaOpenAI,
+  detectarIntencionReserva,
   guardarMensaje,
+  procesarIntencionReserva,
 } from "@/lib/bot";
 
 export async function GET(request: NextRequest) {
@@ -57,6 +60,22 @@ export async function POST(request: NextRequest) {
     "whatsapp",
     from
   );
+
+  if (detectarIntencionReserva(body) && aimharderEstaConfigurado()) {
+    const respuestaReserva = await procesarIntencionReserva(
+      body,
+      conversacion.id
+    );
+
+    if (respuestaReserva) {
+      await guardarMensaje(conversacion.id, "user", body);
+      await guardarMensaje(conversacion.id, "assistant", respuestaReserva);
+
+      return new Response(construirTwiML(respuestaReserva), {
+        headers: { "Content-Type": "text/xml" },
+      });
+    }
+  }
 
   const messages = await construirMensajesParaOpenAI(
     bot,
