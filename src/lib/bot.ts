@@ -1,3 +1,4 @@
+import { getCalendario } from "@/lib/aimharder";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Bot, Canal, Conocimiento, Conversacion, Mensaje } from "@/types";
 
@@ -100,9 +101,20 @@ interface ClaseCalendarioBot {
 }
 
 function obtenerBaseUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+  const url = process.env.NEXT_PUBLIC_APP_URL
+    ? process.env.NEXT_PUBLIC_APP_URL
+    : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+
+  // TODO(debug-aimharder): quitar una vez confirmado el origen del problema en producción.
+  console.log("[debug-aimharder] obtenerBaseUrl ->", {
+    url,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? null,
+    VERCEL_URL: process.env.VERCEL_URL ?? null,
+  });
+
+  return url;
 }
 
 function formatearFechaISO(fecha: Date) {
@@ -119,15 +131,29 @@ async function obtenerClasesCalendario(
   fecha: string
 ): Promise<ClaseCalendarioBot[]> {
   try {
-    const respuesta = await fetch(
-      `${obtenerBaseUrl()}/api/aimharder/calendario?fecha=${fecha}`
-    );
+    const clases = await getCalendario(fecha);
 
-    if (!respuesta.ok) return [];
+    const clasesFormateadas = clases.map((clase) => ({
+      id: clase.id,
+      nombre: clase.name,
+      hora: clase.time,
+      plazasLibres: Math.max(clase.limit - clase.ocupation, 0),
+      plazasTotales: clase.limit,
+      entrenador: clase.coach ?? null,
+    }));
 
-    const datos = (await respuesta.json()) as { clases: ClaseCalendarioBot[] };
-    return datos.clases ?? [];
-  } catch {
+    // TODO(debug-aimharder): quitar una vez confirmado el origen del problema en producción.
+    console.log("[debug-aimharder] obtenerClasesCalendario ->", {
+      fecha,
+      cantidad: clasesFormateadas.length,
+    });
+
+    return clasesFormateadas;
+  } catch (error) {
+    console.log("[debug-aimharder] error en getCalendario ->", {
+      fecha,
+      error,
+    });
     return [];
   }
 }
@@ -150,14 +176,27 @@ function formatearClasesParaPrompt(fecha: string, clases: ClaseCalendarioBot[]) 
 export async function obtenerCalendarioHoy(): Promise<string> {
   const fecha = formatearFechaISO(new Date());
   const clases = await obtenerClasesCalendario(fecha);
-  return formatearClasesParaPrompt(fecha, clases);
+  const texto = formatearClasesParaPrompt(fecha, clases);
+
+  // TODO(debug-aimharder): quitar una vez confirmado el origen del problema en producción.
+  console.log("[debug-aimharder] obtenerCalendarioHoy ->", { fecha, texto });
+
+  return texto;
 }
 
 export function aimharderEstaConfigurado(): boolean {
-  return (
+  const configurado =
     Boolean(process.env.AIMHARDER_ACCESS_TOKEN) &&
-    Boolean(process.env.AIMHARDER_REFRESH_TOKEN)
-  );
+    Boolean(process.env.AIMHARDER_REFRESH_TOKEN);
+
+  // TODO(debug-aimharder): quitar una vez confirmado el origen del problema en producción.
+  console.log("[debug-aimharder] aimharderEstaConfigurado ->", {
+    configurado,
+    tieneAccessToken: Boolean(process.env.AIMHARDER_ACCESS_TOKEN),
+    tieneRefreshToken: Boolean(process.env.AIMHARDER_REFRESH_TOKEN),
+  });
+
+  return configurado;
 }
 
 export async function construirSystemPrompt(
@@ -184,6 +223,12 @@ export async function construirSystemPrompt(
       formatearClasesParaPrompt(fechaManana, clasesManana),
     ].join("\n\n");
   }
+
+  // TODO(debug-aimharder): quitar una vez confirmado el origen del problema en producción.
+  console.log("[debug-aimharder] construirSystemPrompt contextoCalendario ->", {
+    aimharderConfigurado: aimharderEstaConfigurado(),
+    contextoCalendario,
+  });
 
   return [
     `Eres el asistente virtual de "${bot.empresa}"${

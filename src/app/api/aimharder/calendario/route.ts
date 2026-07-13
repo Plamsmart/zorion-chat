@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     const clasesFormateadas = clases.map((clase) => ({
       id: clase.id,
-      nombre: clase.className,
+      nombre: clase.name,
       hora: clase.time,
       plazasLibres: Math.max(clase.limit - clase.ocupation, 0),
       plazasTotales: clase.limit,

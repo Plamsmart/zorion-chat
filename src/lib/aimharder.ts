@@ -15,7 +15,7 @@ let refreshTokenActual = process.env.AIMHARDER_REFRESH_TOKEN ?? "";
  */
 export interface ClaseAimharder {
   id: number;
-  className: string;
+  name: string;
   time: string;
   timeid: number;
   limit: number;
