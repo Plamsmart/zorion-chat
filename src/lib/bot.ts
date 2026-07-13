@@ -344,19 +344,24 @@ export async function procesarIntencionReserva(
     return `No encontré ninguna clase que coincida con "${datos.clase}" en el calendario de hoy o mañana. ¿Puedes indicarme el nombre u horario exacto tal como aparece en el calendario?`;
   }
 
+  const payload = {
+    fecha: formatearFechaISO(new Date()),
+    claseId: clase.id,
+    nombre: datos.nombre,
+    email: datos.email,
+    telefono: datos.telefono,
+  };
+
+  // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
+  console.log("[debug-aimharder-reserva] payload enviado ->", payload);
+
   try {
     const respuesta = await fetch(
       `${obtenerBaseUrl()}/api/aimharder/reserva`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fecha: formatearFechaISO(new Date()),
-          claseId: clase.id,
-          nombre: datos.nombre,
-          email: datos.email,
-          telefono: datos.telefono,
-        }),
+        body: JSON.stringify(payload),
       }
     );
 
@@ -365,6 +370,13 @@ export async function procesarIntencionReserva(
       error?: string;
     };
 
+    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
+    console.log("[debug-aimharder-reserva] respuesta recibida ->", {
+      status: respuesta.status,
+      ok: respuesta.ok,
+      cuerpo,
+    });
+
     if (!respuesta.ok) {
       return `No se pudo completar la reserva${
         cuerpo.error ? `: ${cuerpo.error}` : ""
@@ -372,7 +384,12 @@ export async function procesarIntencionReserva(
     }
 
     return `¡Listo, ${datos.nombre}! Tu reserva para "${clase.nombre}" (${clase.hora}) ha sido confirmada. Número de reserva: ${cuerpo.bookingId}.`;
-  } catch {
+  } catch (error) {
+    // TODO(debug-aimharder-reserva): quitar una vez confirmado el origen del problema.
+    console.log("[debug-aimharder-reserva] error atrapado ->", {
+      payload,
+      error,
+    });
     return "Ocurrió un error al procesar tu reserva. Por favor, inténtalo de nuevo más tarde.";
   }
 }
