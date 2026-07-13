@@ -65,11 +65,12 @@ async function peticionAimharder<T>(
 }
 
 export async function getCalendario(fecha: string): Promise<ClaseAimharder[]> {
-  const datos = await peticionAimharder<
-    ClaseAimharder[] | { classes?: ClaseAimharder[] }
-  >(`/calendar/${fecha}`, { method: "GET" });
+  const respuesta = await peticionAimharder<{ data?: ClaseAimharder[] }>(
+    `/calendar/${fecha}`,
+    { method: "GET" }
+  );
 
-  return Array.isArray(datos) ? datos : (datos.classes ?? []);
+  return respuesta.data ?? [];
 }
 
 export async function crearReservaInvitado(
