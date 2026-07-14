@@ -99,6 +99,21 @@ create policy "conocimiento_authenticated_all"
   with check (true);
 
 -- =========================================================
+-- 5. aimharder_tokens — persistencia de tokens de la integración Aimharder
+-- =========================================================
+create table if not exists public.aimharder_tokens (
+  id            text primary key,
+  access_token  text not null,
+  refresh_token text not null,
+  updated_at    timestamptz not null default now()
+);
+
+alter table public.aimharder_tokens enable row level security;
+
+-- Sin políticas: solo el cliente admin (service role) puede leer/escribir,
+-- que además bypassa RLS por diseño de Supabase.
+
+-- =========================================================
 -- Índices
 -- =========================================================
 create index if not exists idx_conversaciones_bot_id on public.conversaciones (bot_id);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { inicializarTokens } from "@/lib/aimharder";
 import { openai } from "@/lib/openai";
 import {
   aimharderEstaConfigurado,
@@ -35,6 +36,8 @@ function construirTwiML(mensaje: string) {
 }
 
 export async function POST(request: NextRequest) {
+  await inicializarTokens();
+
   const formData = await request.formData();
   const from = formData.get("From")?.toString();
   const body = formData.get("Body")?.toString();

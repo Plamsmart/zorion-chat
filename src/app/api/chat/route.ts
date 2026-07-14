@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { inicializarTokens } from "@/lib/aimharder";
 import { openai } from "@/lib/openai";
 import {
   aimharderEstaConfigurado,
@@ -25,6 +26,8 @@ function respuestaComoStream(texto: string) {
 }
 
 export async function POST(request: NextRequest) {
+  await inicializarTokens();
+
   const { mensaje, bot_id, session_id } = await request.json();
 
   if (!mensaje || !bot_id || !session_id) {

@@ -1,4 +1,7 @@
+import { createAdminClient } from "@/lib/supabase/admin";
+
 const AIMHARDER_BASE_URL = "https://api.aimharder.com";
+const AIMHARDER_TOKENS_ID = "ekin";
 
 // El fetch nativo de Node (undici) solo negocia HTTP/2 cuando se habilita
 // explícitamente `allowH2` en un Agent/Dispatcher propio; por defecto ya
@@ -40,11 +43,64 @@ interface RespuestaRefresh {
   refresh_token?: string;
 }
 
+interface AimharderTokensRow {
+  id: string;
+  access_token: string;
+  refresh_token: string;
+  updated_at: string;
+}
+
+async function cargarTokensDeSupabase(): Promise<void> {
+  const supabase = createAdminClient();
+
+  const { data } = await supabase
+    .from("aimharder_tokens")
+    .select("*")
+    .eq("id", AIMHARDER_TOKENS_ID)
+    .maybeSingle<AimharderTokensRow>();
+
+  if (data) {
+    accessTokenActual = data.access_token;
+    refreshTokenActual = data.refresh_token;
+  }
+}
+
+async function guardarTokensEnSupabase(
+  accessToken: string,
+  refreshToken: string
+): Promise<void> {
+  const supabase = createAdminClient();
+
+  await supabase.from("aimharder_tokens").upsert({
+    id: AIMHARDER_TOKENS_ID,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export async function inicializarTokens(): Promise<void> {
+  await cargarTokensDeSupabase();
+
+  if (!accessTokenActual || !refreshTokenActual) {
+    accessTokenActual = process.env.AIMHARDER_ACCESS_TOKEN ?? "";
+    refreshTokenActual = process.env.AIMHARDER_REFRESH_TOKEN ?? "";
+
+    if (accessTokenActual && refreshTokenActual) {
+      await guardarTokensEnSupabase(accessTokenActual, refreshTokenActual);
+    }
+  }
+}
+
 async function peticionAimharder<T>(
   ruta: string,
   init: RequestInit = {},
   reintentando = false
 ): Promise<T> {
+  if (!accessTokenActual) {
+    await cargarTokensDeSupabase();
+  }
+
   const respuesta = await fetch(`${AIMHARDER_BASE_URL}${ruta}`, {
     ...init,
     headers: {
@@ -120,4 +176,6 @@ export async function refrescarToken(): Promise<void> {
   if (datos.refresh_token) {
     refreshTokenActual = datos.refresh_token;
   }
+
+  await guardarTokensEnSupabase(accessTokenActual, refreshTokenActual);
 }

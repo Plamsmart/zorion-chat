@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCalendario } from "@/lib/aimharder";
+import { getCalendario, inicializarTokens } from "@/lib/aimharder";
 
 export async function GET(request: NextRequest) {
+  await inicializarTokens();
+
   const fecha = request.nextUrl.searchParams.get("fecha");
 
   if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
