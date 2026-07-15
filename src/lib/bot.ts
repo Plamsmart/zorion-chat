@@ -412,17 +412,27 @@ export async function procesarIntencionReserva(
 
     const cuerpo = (await respuesta.json()) as {
       bookingId?: number;
-      error?: string;
+      error?: unknown;
     };
 
     if (!respuesta.ok) {
+      const detalleError =
+        typeof cuerpo.error === "string"
+          ? cuerpo.error
+          : cuerpo.error !== undefined
+            ? JSON.stringify(cuerpo.error)
+            : undefined;
+
       return `No se pudo completar la reserva${
-        cuerpo.error ? `: ${cuerpo.error}` : ""
+        detalleError ? `: ${detalleError}` : ""
       }. Por favor, inténtalo de nuevo más tarde.`;
     }
 
     return `¡Listo, ${datos.nombre}! Tu reserva para "${clase.nombre}" (${clase.hora}) ha sido confirmada. Número de reserva: ${cuerpo.bookingId}.`;
-  } catch {
-    return "Ocurrió un error al procesar tu reserva. Por favor, inténtalo de nuevo más tarde.";
+  } catch (error) {
+    const detalleError =
+      error instanceof Error ? error.message : JSON.stringify(error);
+
+    return `Ocurrió un error al procesar tu reserva: ${detalleError}. Por favor, inténtalo de nuevo más tarde.`;
   }
 }
