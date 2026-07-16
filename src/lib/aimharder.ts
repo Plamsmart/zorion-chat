@@ -115,8 +115,19 @@ async function peticionAimharder<T>(
   }
 
   if (!respuesta.ok) {
+    const cuerpoError = await respuesta.text();
+
+    if (
+      respuesta.status === 400 &&
+      !reintentando &&
+      cuerpoError.toLowerCase().includes("expired")
+    ) {
+      await refrescarToken();
+      return peticionAimharder<T>(ruta, init, true);
+    }
+
     throw new Error(
-      `Error en la petición a Aimharder (${respuesta.status}): ${await respuesta.text()}`
+      `Error en la petición a Aimharder (${respuesta.status}): ${cuerpoError}`
     );
   }
 
