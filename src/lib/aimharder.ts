@@ -11,6 +11,10 @@ const AIMHARDER_TOKENS_ID = "ekin";
 let accessTokenActual = process.env.AIMHARDER_ACCESS_TOKEN ?? "";
 let refreshTokenActual = process.env.AIMHARDER_REFRESH_TOKEN ?? "";
 
+// ─── BLOQUEO PARA EVITAR REFRESCOS SIMULTÁNEOS ───
+let estaRefrescando = false;
+let promesaRefresco: Promise<void> | null = null;
+
 /**
  * Forma de una clase del calendario. Los nombres de campo son una
  * estimación basada en integraciones conocidas de Aimharder; ajustar si
@@ -38,9 +42,12 @@ export interface DatosReservaInvitado {
   booking_notes: string;
 }
 
+// ─── CORREGIDO: kebab-case según la documentación de AimHarder ───
 interface RespuestaRefresh {
-  access_token: string;
-  refresh_token?: string;
+  "access-token": string;
+  "access-token-expires-at"?: string;
+  "refresh-token"?: string;
+  "refresh-token-expires-at"?: string;
 }
 
 interface AimharderTokensRow {
@@ -67,7 +74,7 @@ async function cargarTokensDeSupabase(): Promise<void> {
 
 async function guardarTokensEnSupabase(
   accessToken: string,
-  refreshToken: string
+  refreshToken: string,
 ): Promise<void> {
   const supabase = createAdminClient();
 
@@ -92,10 +99,11 @@ export async function inicializarTokens(): Promise<void> {
   }
 }
 
+// ─── CORREGIDO: detecta token expirado en status 400, 401 y 410 ───
 async function peticionAimharder<T>(
   ruta: string,
   init: RequestInit = {},
-  reintentando = false
+  reintentando = false,
 ): Promise<T> {
   if (!accessTokenActual) {
     await cargarTokensDeSupabase();
@@ -109,42 +117,43 @@ async function peticionAimharder<T>(
     },
   });
 
-  if (respuesta.status === 410 && !reintentando) {
+  // Leer el body ANTES de decidir si reintentar o no
+  const cuerpoTexto = await respuesta.text();
+  const cuerpoJson = cuerpoTexto ? JSON.parse(cuerpoTexto) : null;
+
+  // Detectar token expirado: 400 con "expired" en el body, o 401, o 410
+  const esTokenExpirado =
+    (respuesta.status === 400 &&
+      cuerpoTexto.toLowerCase().includes("expired")) ||
+    respuesta.status === 401 ||
+    respuesta.status === 410;
+
+  if (esTokenExpirado && !reintentando) {
+    console.log("🔄 Token expirado detectado. Refrescando...");
     await refrescarToken();
     return peticionAimharder<T>(ruta, init, true);
   }
 
   if (!respuesta.ok) {
-    const cuerpoError = await respuesta.text();
-
-    if (
-      respuesta.status === 400 &&
-      !reintentando &&
-      cuerpoError.toLowerCase().includes("expired")
-    ) {
-      await refrescarToken();
-      return peticionAimharder<T>(ruta, init, true);
-    }
-
     throw new Error(
-      `Error en la petición a Aimharder (${respuesta.status}): ${cuerpoError}`
+      `Error en la petición a Aimharder (${respuesta.status}): ${cuerpoTexto}`,
     );
   }
 
-  return (await respuesta.json()) as T;
+  return cuerpoJson as T;
 }
 
 export async function getCalendario(fecha: string): Promise<ClaseAimharder[]> {
   const respuesta = await peticionAimharder<{ data?: ClaseAimharder[] }>(
     `/calendar/${fecha}`,
-    { method: "GET" }
+    { method: "GET" },
   );
 
   return respuesta.data ?? [];
 }
 
 export async function crearReservaInvitado(
-  datos: DatosReservaInvitado
+  datos: DatosReservaInvitado,
 ): Promise<number> {
   const respuesta = await peticionAimharder<{
     data?: { message?: string; id?: number };
@@ -161,32 +170,62 @@ export async function crearReservaInvitado(
   return bookingId;
 }
 
+// ─── CORREGIDO: booking_id en lugar de id ───
 export async function cancelarReserva(bookingId: number): Promise<void> {
   await peticionAimharder<unknown>("/classes/booking/cancel", {
     method: "POST",
-    body: JSON.stringify({ id: bookingId }),
+    body: JSON.stringify({ booking_id: bookingId }),
   });
 }
 
+// ─── CORREGIDO: bloqueo de concurrencia + Content-Type + kebab-case ───
 export async function refrescarToken(): Promise<void> {
-  const respuesta = await fetch(`${AIMHARDER_BASE_URL}/auth/tokens/refresh`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${refreshTokenActual}`,
-    },
-  });
-
-  if (!respuesta.ok) {
-    throw new Error(
-      `No se pudo refrescar el token de Aimharder (${respuesta.status})`
-    );
+  // Si ya hay un refresco en curso, esperar a que termine
+  if (estaRefrescando && promesaRefresco) {
+    console.log("⏳ Refresco ya en curso, esperando...");
+    return promesaRefresco;
   }
 
-  const datos = (await respuesta.json()) as RespuestaRefresh;
-  accessTokenActual = datos.access_token;
-  if (datos.refresh_token) {
-    refreshTokenActual = datos.refresh_token;
-  }
+  estaRefrescando = true;
 
-  await guardarTokensEnSupabase(accessTokenActual, refreshTokenActual);
+  promesaRefresco = (async () => {
+    try {
+      console.log("🔄 Refrescando token de AimHarder...");
+
+      const respuesta = await fetch(
+        `${AIMHARDER_BASE_URL}/auth/tokens/refresh`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${refreshTokenActual}`,
+          },
+        },
+      );
+
+      if (!respuesta.ok) {
+        const cuerpoError = await respuesta.text();
+        throw new Error(
+          `No se pudo refrescar el token de Aimharder (${respuesta.status}): ${cuerpoError}`,
+        );
+      }
+
+      const datos = (await respuesta.json()) as RespuestaRefresh;
+      accessTokenActual = datos["access-token"];
+      if (datos["refresh-token"]) {
+        refreshTokenActual = datos["refresh-token"];
+      }
+
+      console.log("✅ Token refrescado correctamente");
+      await guardarTokensEnSupabase(accessTokenActual, refreshTokenActual);
+    } catch (error) {
+      console.error("❌ Error en refrescarToken:", error);
+      throw error;
+    } finally {
+      estaRefrescando = false;
+      promesaRefresco = null;
+    }
+  })();
+
+  return promesaRefresco;
 }
