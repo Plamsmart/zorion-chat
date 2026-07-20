@@ -37,7 +37,7 @@ export async function buscarBotActivoPorWhatsapp(numeroWhatsapp: string) {
 export async function buscarOCrearConversacion(
   botId: string,
   canal: Canal,
-  identificador: string
+  identificador: string,
 ) {
   const supabase = createAdminClient();
 
@@ -118,7 +118,7 @@ function sumarDias(fecha: Date, dias: number) {
 }
 
 async function obtenerClasesCalendario(
-  fecha: string
+  fecha: string,
 ): Promise<ClaseCalendarioBot[]> {
   try {
     const clases = await getCalendario(fecha);
@@ -136,7 +136,10 @@ async function obtenerClasesCalendario(
   }
 }
 
-function formatearClasesParaPrompt(fecha: string, clases: ClaseCalendarioBot[]) {
+function formatearClasesParaPrompt(
+  fecha: string,
+  clases: ClaseCalendarioBot[],
+) {
   if (clases.length === 0) {
     return `${fecha}: no hay clases programadas.`;
   }
@@ -145,7 +148,7 @@ function formatearClasesParaPrompt(fecha: string, clases: ClaseCalendarioBot[]) 
     (c) =>
       `- ${c.hora} ${c.nombre} (${c.plazasLibres}/${c.plazasTotales} plazas libres)${
         c.entrenador ? ` — ${c.entrenador}` : ""
-      }`
+      }`,
   );
 
   return `${fecha}:\n${lineas.join("\n")}`;
@@ -157,30 +160,37 @@ export async function obtenerCalendarioHoy(): Promise<string> {
   return formatearClasesParaPrompt(fecha, clases);
 }
 
-export function aimharderEstaConfigurado(): boolean {
-  return (
-    Boolean(process.env.AIMHARDER_ACCESS_TOKEN) &&
-    Boolean(process.env.AIMHARDER_REFRESH_TOKEN)
-  );
+// ─── CORREGIDO: verifica tokens en Supabase, no en variables de entorno ───
+export async function aimharderEstaConfigurado(): Promise<boolean> {
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("aimharder_tokens")
+    .select("id")
+    .eq("id", "ekin")
+    .maybeSingle();
+
+  return Boolean(data);
 }
 
 export async function construirSystemPrompt(
   bot: Bot,
-  conocimiento: Conocimiento[]
+  conocimiento: Conocimiento[],
 ) {
   const contextoConocimiento = conocimiento
     .map((c) => (c.titulo ? `${c.titulo}:\n${c.contenido}` : c.contenido))
     .join("\n\n");
 
   let contextoCalendario = "";
-  if (aimharderEstaConfigurado()) {
+
+  // ─── CORREGIDO: await porque ahora es async ───
+  if (await aimharderEstaConfigurado()) {
     const hoy = new Date();
     const fechas = Array.from({ length: 7 }, (_, i) =>
-      formatearFechaISO(sumarDias(hoy, i))
+      formatearFechaISO(sumarDias(hoy, i)),
     );
 
     const clasesPorFecha = await Promise.all(
-      fechas.map((fecha) => obtenerClasesCalendario(fecha))
+      fechas.map((fecha) => obtenerClasesCalendario(fecha)),
     );
 
     contextoCalendario = fechas
@@ -208,7 +218,7 @@ export async function construirSystemPrompt(
 export async function construirMensajesParaOpenAI(
   bot: Bot,
   conversacionId: string,
-  mensajeUsuario: string
+  mensajeUsuario: string,
 ): Promise<MensajeParaOpenAI[]> {
   const [historial, conocimiento] = await Promise.all([
     obtenerHistorial(conversacionId),
@@ -230,7 +240,7 @@ export async function construirMensajesParaOpenAI(
 export async function guardarMensaje(
   conversacionId: string,
   rol: "user" | "assistant",
-  contenido: string
+  contenido: string,
 ) {
   const supabase = createAdminClient();
 
@@ -261,7 +271,7 @@ function contieneDatosReserva(texto: string): boolean {
 
 export async function detectarIntencionReserva(
   texto: string,
-  conversacionId?: string
+  conversacionId?: string,
 ): Promise<boolean> {
   if (PALABRAS_CLAVE_RESERVA.test(texto)) {
     return true;
@@ -273,7 +283,7 @@ export async function detectarIntencionReserva(
 
   const historial = await obtenerHistorial(conversacionId);
   return historial.some(
-    (m) => m.rol === "user" && PALABRAS_CLAVE_RESERVA.test(m.contenido)
+    (m) => m.rol === "user" && PALABRAS_CLAVE_RESERVA.test(m.contenido),
   );
 }
 
@@ -294,7 +304,7 @@ interface DatosExtraidosIA {
 
 async function extraerDatosReservaConIA(
   mensaje: string,
-  historial: Mensaje[]
+  historial: Mensaje[],
 ): Promise<DatosReservaDetectados> {
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -326,7 +336,7 @@ async function extraerDatosReservaConIA(
 async function buscarClaseCoincidente(
   claseTexto: string,
   horaTexto?: string,
-  fechaTexto?: string
+  fechaTexto?: string,
 ): Promise<ClaseCalendarioBot | null> {
   const hoy = new Date();
   const fechas = fechaTexto
@@ -359,7 +369,7 @@ async function buscarClaseCoincidente(
  */
 export async function procesarIntencionReserva(
   mensaje: string,
-  conversacionId: string
+  conversacionId: string,
 ): Promise<string | null> {
   if (!PALABRAS_CLAVE_RESERVA.test(mensaje) && !contieneDatosReserva(mensaje)) {
     return null;
@@ -372,12 +382,13 @@ export async function procesarIntencionReserva(
   if (!datos.nombre) faltantes.push("tu nombre completo");
   if (!datos.email) faltantes.push("tu email");
   if (!datos.telefono) faltantes.push("tu teléfono");
-  if (!datos.clase) faltantes.push("el nombre de la clase que quieres reservar");
+  if (!datos.clase)
+    faltantes.push("el nombre de la clase que quieres reservar");
   if (!datos.hora) faltantes.push("la hora de la clase");
 
   if (faltantes.length > 0) {
     return `Para completar tu reserva necesito que me indiques: ${faltantes.join(
-      ", "
+      ", ",
     )}.`;
   }
 
@@ -385,7 +396,7 @@ export async function procesarIntencionReserva(
   const clase = await buscarClaseCoincidente(
     datos.clase!,
     datos.hora,
-    fechaReserva
+    fechaReserva,
   );
 
   if (!clase) {
@@ -401,14 +412,11 @@ export async function procesarIntencionReserva(
   };
 
   try {
-    const respuesta = await fetch(
-      `${obtenerBaseUrl()}/api/aimharder/reserva`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
+    const respuesta = await fetch(`${obtenerBaseUrl()}/api/aimharder/reserva`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
     const cuerpo = (await respuesta.json()) as {
       bookingId?: number;
