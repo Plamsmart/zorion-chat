@@ -8,8 +8,8 @@ const AIMHARDER_TOKENS_ID = "ekin";
 // usa HTTP/1.1, que es el comportamiento equivalente a `curl --http1.1`
 // que requiere la API de Aimharder.
 
-let accessTokenActual = process.env.AIMHARDER_ACCESS_TOKEN ?? "";
-let refreshTokenActual = process.env.AIMHARDER_REFRESH_TOKEN ?? "";
+let accessTokenActual = "";
+let refreshTokenActual = "";
 
 // ─── BLOQUEO PARA EVITAR REFRESCOS SIMULTÁNEOS ───
 let estaRefrescando = false;
@@ -88,18 +88,10 @@ async function guardarTokensEnSupabase(
 
 export async function inicializarTokens(): Promise<void> {
   await cargarTokensDeSupabase();
-
-  if (!accessTokenActual || !refreshTokenActual) {
-    accessTokenActual = process.env.AIMHARDER_ACCESS_TOKEN ?? "";
-    refreshTokenActual = process.env.AIMHARDER_REFRESH_TOKEN ?? "";
-
-    if (accessTokenActual && refreshTokenActual) {
-      await guardarTokensEnSupabase(accessTokenActual, refreshTokenActual);
-    }
-  }
 }
 
 // ─── CORREGIDO: detecta token expirado en status 400, 401 y 410 ───
+// ─── Y lee el body ANTES de decidir si reintentar ───
 async function peticionAimharder<T>(
   ruta: string,
   init: RequestInit = {},
@@ -178,7 +170,7 @@ export async function cancelarReserva(bookingId: number): Promise<void> {
   });
 }
 
-// ─── CORREGIDO: bloqueo de concurrencia + Content-Type + kebab-case ───
+// ─── CORREGIDO: bloqueo de concurrencia + Content-Type + kebab-case + data wrapper ───
 export async function refrescarToken(): Promise<void> {
   // Si ya hay un refresco en curso, esperar a que termine
   if (estaRefrescando && promesaRefresco) {
@@ -210,13 +202,23 @@ export async function refrescarToken(): Promise<void> {
         );
       }
 
-      const datos = (await respuesta.json()) as RespuestaRefresh;
+      // ─── CORREGIDO: los tokens vienen dentro de "data" en la respuesta ───
+      const jsonCompleto = (await respuesta.json()) as {
+        data: RespuestaRefresh;
+        info: { version: string; copyright: string };
+      };
+
+      const datos = jsonCompleto.data;
+
       accessTokenActual = datos["access-token"];
       if (datos["refresh-token"]) {
         refreshTokenActual = datos["refresh-token"];
       }
 
-      console.log("✅ Token refrescado correctamente");
+      console.log(
+        "✅ Token refrescado. Expira:",
+        datos["access-token-expires-at"],
+      );
       await guardarTokensEnSupabase(accessTokenActual, refreshTokenActual);
     } catch (error) {
       console.error("❌ Error en refrescarToken:", error);
