@@ -144,6 +144,32 @@ export async function getCalendario(fecha: string): Promise<ClaseAimharder[]> {
   return respuesta.data ?? [];
 }
 
+export interface TarifaAimharder {
+  id: number;
+  name: string;
+  description: string;
+  type: string;
+  price: number;
+  taxes: number;
+  deactivation_date: string | null;
+  online_sale: string;
+  registration_fee: number;
+  order: number;
+}
+
+export async function getMemberships(): Promise<TarifaAimharder[]> {
+  const respuesta = await peticionAimharder<{ data?: TarifaAimharder[] }>(
+    "/memberships",
+    { method: "GET" },
+  );
+
+  const tarifas = respuesta.data ?? [];
+
+  return tarifas.filter(
+    (tarifa) => !tarifa.deactivation_date && tarifa.online_sale === "activada",
+  );
+}
+
 export async function crearReservaInvitado(
   datos: DatosReservaInvitado,
 ): Promise<number> {
