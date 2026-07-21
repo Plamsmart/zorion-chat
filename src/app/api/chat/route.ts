@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
   if (
     (await detectarIntencionReserva(mensaje, conversacion.id)) &&
-    aimharderEstaConfigurado()
+    (await aimharderEstaConfigurado())
   ) {
     const respuestaReserva = await procesarIntencionReserva(
       mensaje,

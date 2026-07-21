@@ -2,27 +2,14 @@
 
 import { useCallback, useState } from "react";
 
-const SESSION_STORAGE_KEY = "zorion_chat_session_id";
-
 export interface ChatMessage {
   id: string;
   rol: "user" | "assistant";
   contenido: string;
 }
 
-function obtenerSessionId(): string {
-  if (typeof window === "undefined") return "";
-
-  const existente = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-  if (existente) return existente;
-
-  const nuevo = crypto.randomUUID();
-  window.sessionStorage.setItem(SESSION_STORAGE_KEY, nuevo);
-  return nuevo;
-}
-
 export function useChatSession(botId: string) {
-  const [sessionId] = useState(obtenerSessionId);
+  const [sessionId] = useState(() => crypto.randomUUID());
   const [mensajes, setMensajes] = useState<ChatMessage[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [escribiendo, setEscribiendo] = useState(false);
