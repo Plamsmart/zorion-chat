@@ -1,4 +1,4 @@
-import { getCalendario } from "@/lib/aimharder";
+import { cancelarReserva, getCalendario } from "@/lib/aimharder";
 import { openai } from "@/lib/openai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Bot, Canal, Conocimiento, Conversacion, Mensaje } from "@/types";
@@ -442,5 +442,63 @@ export async function procesarIntencionReserva(
       error instanceof Error ? error.message : JSON.stringify(error);
 
     return `Ocurrió un error al procesar tu reserva: ${detalleError}. Por favor, inténtalo de nuevo más tarde.`;
+  }
+}
+
+const PALABRAS_CLAVE_CANCELACION =
+  /cancelar|anular|borrar reserva|quitar reserva|darme de baja de la clase/i;
+const REGEX_BOOKING_ID = /\b\d{5,}\b/;
+
+export async function detectarIntencionCancelacion(
+  texto: string,
+  conversacionId?: string
+): Promise<boolean> {
+  if (PALABRAS_CLAVE_CANCELACION.test(texto)) {
+    return true;
+  }
+
+  if (!conversacionId) {
+    return false;
+  }
+
+  const historial = await obtenerHistorial(conversacionId);
+  return historial.some(
+    (m) => m.rol === "user" && PALABRAS_CLAVE_CANCELACION.test(m.contenido)
+  );
+}
+
+/**
+ * Detecta intención de cancelación en el mensaje actual, pide el número de
+ * booking si falta y, cuando lo tiene, cancela la reserva en Aimharder.
+ * Devuelve `null` si el mensaje actual no tiene intención de cancelación ni
+ * un número de booking reconocible.
+ */
+export async function procesarIntencionCancelacion(
+  mensaje: string,
+  conversacionId: string
+): Promise<string | null> {
+  if (
+    !PALABRAS_CLAVE_CANCELACION.test(mensaje) &&
+    !REGEX_BOOKING_ID.test(mensaje)
+  ) {
+    return null;
+  }
+
+  const bookingIdTexto = mensaje.match(REGEX_BOOKING_ID)?.[0];
+
+  if (!bookingIdTexto) {
+    return "Para cancelar tu reserva necesito el número de booking (te lo enviaron por email cuando reservaste). ¿Me lo puedes indicar?";
+  }
+
+  const bookingId = Number(bookingIdTexto);
+
+  try {
+    await cancelarReserva(bookingId);
+    return `Listo, tu reserva con número de booking ${bookingId} ha sido cancelada.`;
+  } catch (error) {
+    const detalleError =
+      error instanceof Error ? error.message : JSON.stringify(error);
+
+    return `No se pudo cancelar la reserva: ${detalleError}. Por favor, inténtalo de nuevo más tarde.`;
   }
 }

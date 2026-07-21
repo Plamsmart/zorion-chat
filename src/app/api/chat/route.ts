@@ -6,8 +6,10 @@ import {
   buscarBotActivoPorId,
   buscarOCrearConversacion,
   construirMensajesParaOpenAI,
+  detectarIntencionCancelacion,
   detectarIntencionReserva,
   guardarMensaje,
+  procesarIntencionCancelacion,
   procesarIntencionReserva,
 } from "@/lib/bot";
 
@@ -48,6 +50,22 @@ export async function POST(request: NextRequest) {
     "web",
     session_id
   );
+
+  if (
+    (await detectarIntencionCancelacion(mensaje, conversacion.id)) &&
+    (await aimharderEstaConfigurado())
+  ) {
+    const respuestaCancelacion = await procesarIntencionCancelacion(
+      mensaje,
+      conversacion.id
+    );
+
+    if (respuestaCancelacion) {
+      await guardarMensaje(conversacion.id, "user", mensaje);
+      await guardarMensaje(conversacion.id, "assistant", respuestaCancelacion);
+      return respuestaComoStream(respuestaCancelacion);
+    }
+  }
 
   if (
     (await detectarIntencionReserva(mensaje, conversacion.id)) &&

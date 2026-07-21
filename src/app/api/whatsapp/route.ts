@@ -6,8 +6,10 @@ import {
   buscarBotActivoPorWhatsapp,
   buscarOCrearConversacion,
   construirMensajesParaOpenAI,
+  detectarIntencionCancelacion,
   detectarIntencionReserva,
   guardarMensaje,
+  procesarIntencionCancelacion,
   procesarIntencionReserva,
 } from "@/lib/bot";
 
@@ -63,6 +65,25 @@ export async function POST(request: NextRequest) {
     "whatsapp",
     from
   );
+
+  if (
+    (await detectarIntencionCancelacion(body, conversacion.id)) &&
+    (await aimharderEstaConfigurado())
+  ) {
+    const respuestaCancelacion = await procesarIntencionCancelacion(
+      body,
+      conversacion.id
+    );
+
+    if (respuestaCancelacion) {
+      await guardarMensaje(conversacion.id, "user", body);
+      await guardarMensaje(conversacion.id, "assistant", respuestaCancelacion);
+
+      return new Response(construirTwiML(respuestaCancelacion), {
+        headers: { "Content-Type": "text/xml" },
+      });
+    }
+  }
 
   if (
     (await detectarIntencionReserva(body, conversacion.id)) &&
