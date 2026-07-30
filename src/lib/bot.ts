@@ -1,4 +1,10 @@
-import { cancelarReserva, getCalendario, getMemberships } from "@/lib/aimharder";
+import {
+  cancelarReserva,
+  getCalendario,
+  getMemberships,
+  type ClaseAimharder,
+  type TarifaAimharder,
+} from "@/lib/aimharder";
 import { openai } from "@/lib/openai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Bot, Canal, Conocimiento, Conversacion, Mensaje } from "@/types";
@@ -96,10 +102,16 @@ interface ClaseCalendarioBot {
   id: number;
   nombre: string;
   hora: string;
-  plazasLibres: number;
+  plazasLibres: number | null;
   plazasTotales: number;
   entrenador: string | null;
 }
+
+type ResultadoCalendario =
+  | { ok: true; clases: ClaseCalendarioBot[] }
+  | { ok: false };
+
+type ResultadoTarifas = { ok: true; texto: string } | { ok: false };
 
 function obtenerBaseUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
@@ -117,23 +129,47 @@ function sumarDias(fecha: Date, dias: number) {
   return copia;
 }
 
+// La ocupación no aparece en la respuesta documentada de GET
+// /calendar/:date_str (docs/architecture/aimharder-api-hallazgos.md §1.1).
+// Se acepta cualquiera de las dos grafías observadas y ninguna otra; si no
+// llega, se trata como dato ausente, no como cero.
+function leerOcupacion(clase: ClaseAimharder): number | null {
+  const candidato = clase.ocupation ?? clase.occupation;
+  return typeof candidato === "number" && Number.isFinite(candidato)
+    ? candidato
+    : null;
+}
+
+export function calcularPlazasLibres(clase: ClaseAimharder): number | null {
+  const ocupacion = leerOcupacion(clase);
+  if (ocupacion === null || !Number.isFinite(clase.limit)) {
+    return null;
+  }
+  return Math.max(clase.limit - ocupacion, 0);
+}
+
 async function obtenerClasesCalendario(
   fecha: string,
-): Promise<ClaseCalendarioBot[]> {
-  try {
-    const clases = await getCalendario(fecha);
+): Promise<ResultadoCalendario> {
+  let clases: ClaseAimharder[];
 
-    return clases.map((clase) => ({
+  try {
+    clases = await getCalendario(fecha);
+  } catch {
+    return { ok: false };
+  }
+
+  return {
+    ok: true,
+    clases: clases.map((clase) => ({
       id: clase.schedule_id,
       nombre: clase.name,
       hora: clase.time,
-      plazasLibres: Math.max(clase.limit - clase.ocupation, 0),
+      plazasLibres: calcularPlazasLibres(clase),
       plazasTotales: clase.limit,
-      entrenador: clase.coach ?? null,
-    }));
-  } catch {
-    return [];
-  }
+      entrenador: clase.staff_name ?? null,
+    })),
+  };
 }
 
 function formatearClasesParaPrompt(
@@ -144,41 +180,109 @@ function formatearClasesParaPrompt(
     return `${fecha}: no hay clases programadas.`;
   }
 
-  const lineas = clases.map(
-    (c) =>
-      `- ${c.hora} ${c.nombre} (${c.plazasLibres}/${c.plazasTotales} plazas libres)${
-        c.entrenador ? ` — ${c.entrenador}` : ""
-      }`,
-  );
+  const lineas = clases.map((c) => {
+    const coartadaPlazas =
+      c.plazasLibres !== null
+        ? ` (${c.plazasLibres}/${c.plazasTotales} plazas libres)`
+        : "";
+    const coartadaEntrenador = c.entrenador ? ` — ${c.entrenador}` : "";
+    return `- ${c.hora} ${c.nombre}${coartadaPlazas}${coartadaEntrenador}`;
+  });
 
-  return `${fecha}:\n${lineas.join("\n")}`;
+  const notaPlazas = clases.some((c) => c.plazasLibres === null)
+    ? "\nNota: no dispongo del número de plazas libres. Si te preguntan por disponibilidad, indica que hay que confirmarlo en la app de AimHarder."
+    : "";
+
+  return `${fecha}:\n${lineas.join("\n")}${notaPlazas}`;
 }
 
 export async function obtenerCalendarioHoy(): Promise<string> {
   const fecha = formatearFechaISO(new Date());
-  const clases = await obtenerClasesCalendario(fecha);
-  return formatearClasesParaPrompt(fecha, clases);
-}
+  const resultado = await obtenerClasesCalendario(fecha);
 
-function precioConIva(precio: number, taxes: number): number {
-  return Math.round((precio + (precio * taxes) / 100) * 100) / 100;
-}
-
-export async function obtenerTarifas(): Promise<string> {
-  const tarifas = await getMemberships();
-
-  if (tarifas.length === 0) {
-    return "";
+  if (!resultado.ok) {
+    return `${fecha}: no he podido consultar el calendario en este momento.`;
   }
 
-  return tarifas
+  return formatearClasesParaPrompt(fecha, resultado.clases);
+}
+
+function comoNumeroFinito(valor: unknown): number | null {
+  if (typeof valor === "number") {
+    return Number.isFinite(valor) ? valor : null;
+  }
+  if (typeof valor === "string" && valor.trim() !== "") {
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero : null;
+  }
+  return null;
+}
+
+// Umbral provisional de cordura para un precio con IVA: un resultado fuera
+// de aquí es más probable que sea un fallo de parseo que un precio real, así
+// que se omite en lugar de mostrarlo (ver docs/tasks/02-nan-y-degradacion.md
+// §4). No es un parámetro de un cliente concreto — es un límite genérico
+// hasta que exista configuración por bot para esto (CLAUDE.md §0).
+const RANGO_PRECIO_PLAUSIBLE = { min: 0, max: 2000 };
+
+// La documentación de AimHarder define `taxes` como "porcentaje o importe"
+// sin garantizarlo por contrato (docs/architecture/aimharder-api-hallazgos.md
+// §1.3). Se asume porcentaje, respaldado por el ejemplo oficial ("21.0").
+// Confirmarlo con datos reales es objeto de la tarea 01; no cambiar esta
+// fórmula sin esa confirmación.
+function precioConIva(precio: unknown, taxes: unknown): number | null {
+  const precioNumerico = comoNumeroFinito(precio);
+  const taxesNumerico = comoNumeroFinito(taxes);
+
+  if (precioNumerico === null || taxesNumerico === null) {
+    return null;
+  }
+
+  const resultado =
+    Math.round((precioNumerico + (precioNumerico * taxesNumerico) / 100) * 100) /
+    100;
+
+  if (!Number.isFinite(resultado)) {
+    return null;
+  }
+
+  if (
+    resultado < RANGO_PRECIO_PLAUSIBLE.min ||
+    resultado > RANGO_PRECIO_PLAUSIBLE.max
+  ) {
+    console.warn(
+      `precioConIva: resultado fuera de rango plausible (${resultado}€), se omite la tarifa`,
+    );
+    return null;
+  }
+
+  return resultado;
+}
+
+async function obtenerTarifas(): Promise<ResultadoTarifas> {
+  let tarifas: TarifaAimharder[];
+
+  try {
+    tarifas = await getMemberships();
+  } catch {
+    return { ok: false };
+  }
+
+  if (tarifas.length === 0) {
+    return { ok: true, texto: "" };
+  }
+
+  const lineas = tarifas
     .map((t) => {
       const precioFinal = precioConIva(t.price, t.taxes);
+      if (precioFinal === null) return null;
       return `- ${t.name} (${t.type}): ${precioFinal}€ (IVA incluido)${
         t.description ? ` — ${t.description}` : ""
       }`;
     })
-    .join("\n");
+    .filter((linea): linea is string => linea !== null);
+
+  return { ok: true, texto: lineas.join("\n") };
 }
 
 // ─── CORREGIDO: verifica tokens en Supabase, no en variables de entorno ───
@@ -204,22 +308,47 @@ export async function construirSystemPrompt(
   let contextoCalendario = "";
   let contextoTarifas = "";
 
-  // ─── CORREGIDO: await porque ahora es async ───
-  if (await aimharderEstaConfigurado()) {
-    const hoy = new Date();
-    const fechas = Array.from({ length: 7 }, (_, i) =>
-      formatearFechaISO(sumarDias(hoy, i)),
-    );
+  // Un fallo al consultar AimHarder degrada el prompt (bloques explícitos
+  // de "no he podido consultar"); nunca debe cancelar la conversación.
+  try {
+    // ─── CORREGIDO: await porque ahora es async ───
+    if (await aimharderEstaConfigurado()) {
+      const hoy = new Date();
+      const fechas = Array.from({ length: 7 }, (_, i) =>
+        formatearFechaISO(sumarDias(hoy, i)),
+      );
 
-    const clasesPorFecha = await Promise.all(
-      fechas.map((fecha) => obtenerClasesCalendario(fecha)),
-    );
+      const resultadosCalendario = await Promise.all(
+        fechas.map((fecha) => obtenerClasesCalendario(fecha)),
+      );
 
-    contextoCalendario = fechas
-      .map((fecha, i) => formatearClasesParaPrompt(fecha, clasesPorFecha[i]))
-      .join("\n\n");
+      contextoCalendario = fechas
+        .map((fecha, i) => {
+          const resultado = resultadosCalendario[i];
+          return resultado.ok
+            ? formatearClasesParaPrompt(fecha, resultado.clases)
+            : null;
+        })
+        .filter((bloque): bloque is string => bloque !== null)
+        .join("\n\n");
 
-    contextoTarifas = await obtenerTarifas();
+      if (resultadosCalendario.some((r) => !r.ok)) {
+        const avisoCalendario =
+          "Calendario de clases: no he podido consultarlo en este momento.\nNo afirmes horarios ni disponibilidad; ofrece consultarlo en la app.";
+        contextoCalendario = contextoCalendario
+          ? `${contextoCalendario}\n\n${avisoCalendario}`
+          : avisoCalendario;
+      }
+
+      const resultadoTarifas = await obtenerTarifas();
+      contextoTarifas = resultadoTarifas.ok
+        ? resultadoTarifas.texto
+        : "Tarifas: no he podido consultarlas en este momento. No inventes precios; indica que hay que confirmarlos en la app de AimHarder o contactando con el centro.";
+    }
+  } catch {
+    contextoCalendario =
+      "Calendario de clases y tarifas: no he podido consultar AimHarder en este momento.\nNo afirmes horarios, disponibilidad ni precios; ofrece consultarlo en la app.";
+    contextoTarifas = "";
   }
 
   return [
@@ -360,11 +489,16 @@ async function extraerDatosReservaConIA(
   }
 }
 
+type ResultadoBusquedaClase =
+  | { estado: "encontrada"; clase: ClaseCalendarioBot }
+  | { estado: "no_encontrada" }
+  | { estado: "fallo_consulta" };
+
 async function buscarClaseCoincidente(
   claseTexto: string,
   horaTexto?: string,
   fechaTexto?: string,
-): Promise<ClaseCalendarioBot | null> {
+): Promise<ResultadoBusquedaClase> {
   const hoy = new Date();
   const fechas = fechaTexto
     ? [fechaTexto]
@@ -372,19 +506,27 @@ async function buscarClaseCoincidente(
   const claseNormalizada = claseTexto.toLowerCase();
   const horaNormalizada = horaTexto?.toLowerCase();
 
-  for (const fecha of fechas) {
-    const clases = await obtenerClasesCalendario(fecha);
+  let huboFalloConsulta = false;
 
-    const encontrada = clases.find((c) => {
+  for (const fecha of fechas) {
+    const resultado = await obtenerClasesCalendario(fecha);
+    if (!resultado.ok) {
+      huboFalloConsulta = true;
+      continue;
+    }
+
+    const encontrada = resultado.clases.find((c) => {
       const nombreCoincide = c.nombre.toLowerCase().includes(claseNormalizada);
       const horaCoincide =
         !horaNormalizada || c.hora.toLowerCase().includes(horaNormalizada);
       return nombreCoincide && horaCoincide;
     });
-    if (encontrada) return encontrada;
+    if (encontrada) return { estado: "encontrada", clase: encontrada };
   }
 
-  return null;
+  return huboFalloConsulta
+    ? { estado: "fallo_consulta" }
+    : { estado: "no_encontrada" };
 }
 
 /**
@@ -420,15 +562,21 @@ export async function procesarIntencionReserva(
   }
 
   const fechaReserva = datos.fecha ?? formatearFechaISO(new Date());
-  const clase = await buscarClaseCoincidente(
+  const resultadoBusqueda = await buscarClaseCoincidente(
     datos.clase!,
     datos.hora,
     fechaReserva,
   );
 
-  if (!clase) {
+  if (resultadoBusqueda.estado === "fallo_consulta") {
+    return "No he podido consultar el calendario en este momento, así que no puedo confirmar tu reserva. Vuelve a intentarlo en unos minutos o resérvala directamente en la app de AimHarder.";
+  }
+
+  if (resultadoBusqueda.estado === "no_encontrada") {
     return `No encontré ninguna clase que coincida con "${datos.clase} a las ${datos.hora}" en el calendario del ${fechaReserva}. ¿Puedes indicarme el nombre u horario exacto tal como aparece en el calendario?`;
   }
+
+  const clase = resultadoBusqueda.clase;
 
   const payload = {
     fecha: fechaReserva,

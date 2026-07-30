@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCalendario, inicializarTokens } from "@/lib/aimharder";
+import { calcularPlazasLibres } from "@/lib/bot";
 
 export async function GET(request: NextRequest) {
   await inicializarTokens();
@@ -20,9 +21,9 @@ export async function GET(request: NextRequest) {
       id: clase.schedule_id,
       nombre: clase.name,
       hora: clase.time,
-      plazasLibres: Math.max(clase.limit - clase.ocupation, 0),
+      plazasLibres: calcularPlazasLibres(clase),
       plazasTotales: clase.limit,
-      entrenador: clase.coach ?? null,
+      entrenador: clase.staff_name ?? null,
     }));
 
     return NextResponse.json({ fecha, clases: clasesFormateadas });

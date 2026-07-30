@@ -16,9 +16,12 @@ let estaRefrescando = false;
 let promesaRefresco: Promise<void> | null = null;
 
 /**
- * Forma de una clase del calendario. Los nombres de campo son una
- * estimación basada en integraciones conocidas de Aimharder; ajustar si
- * la respuesta real de la API difiere.
+ * Forma de una clase del calendario según GET /calendar/:date_str
+ * (docs/architecture/aimharder-api-hallazgos.md §1.1). El entrenador es
+ * `staff_name`, no `coach`. La ocupación no está en la respuesta
+ * documentada; `ocupation`/`occupation` quedan declarados como opcionales
+ * por si la API los envía sin documentar, y se leen de forma tolerante en
+ * src/lib/bot.ts (`leerOcupacion`) — no dar por hecho que llegan.
  */
 export interface ClaseAimharder {
   schedule_id: number;
@@ -26,8 +29,11 @@ export interface ClaseAimharder {
   time: string;
   timeid: number;
   limit: number;
-  ocupation: number;
-  coach?: string;
+  ocupation?: number;
+  occupation?: number;
+  staff_id?: number;
+  staff_name?: string;
+  waitlist_count?: number;
   [clave: string]: unknown;
 }
 
@@ -144,13 +150,19 @@ export async function getCalendario(fecha: string): Promise<ClaseAimharder[]> {
   return respuesta.data ?? [];
 }
 
+/**
+ * GET /memberships documenta `price` y `taxes` como Number, pero el
+ * ejemplo oficial los devuelve como string ("10.00", "21.0"). Se tipan
+ * como number | string para reflejar la realidad; normalizar al leerlos
+ * (ver precioConIva en src/lib/bot.ts).
+ */
 export interface TarifaAimharder {
   id: number;
   name: string;
   description: string;
   type: string;
-  price: number;
-  taxes: number;
+  price: number | string;
+  taxes: number | string;
   deactivation_date: string | null;
   online_sale: string;
   registration_fee: number;
