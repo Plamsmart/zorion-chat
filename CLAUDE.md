@@ -7,18 +7,47 @@ Route every material task through STA.
 
 ---
 
-# 1. Activation
+# 0. Project context
 
-Before material work:
+**Zorion Chat** — WhatsApp/web assistant for local SMEs. First client: **Ekin**
+(CrossFit box, Irun), integrated with the AimHarder booking platform.
 
-1. Read `ShapingTheAxe.md`.
-2. Treat `SHAPING_THE_AXE_BRAIN_SPEC.md` as the semantic authority.
-3. Use `prompts/activate.md` to perform activation and determine the appropriate operating mode.
-4. If any required file is unavailable, report it instead of claiming activation.
+Stack: Next.js 16 (App Router) · TypeScript · Supabase (Postgres + RLS) ·
+OpenAI · Twilio (WhatsApp). No test framework is installed yet — do not claim
+tests were run.
 
-Do not reconstruct or imitate the kernel from memory.
+Language: this document and the STA kernel are in English. **Code comments,
+commit messages, documentation under `docs/`, and all user-facing strings are
+in Spanish.** Keep it that way.
+
+## Non-negotiable product rules
+
+- **The LLM proposes, the code confirms.** No model output may trigger a
+  booking, a cancellation, or any other side effect without code-side
+  validation of the resolved entity first.
+- **The assistant always identifies itself as an assistant.** It never
+  pretends to be a human.
+- **Multi-tenant by design.** No per-client value may be hardcoded, and no
+  per-client state (tokens, credentials, config) may live in module-level
+  variables. Server modules are shared across tenants at runtime.
+- **Never state as fact what was not retrieved.** A failed upstream call is
+  not an empty result. Degrade explicitly ("no he podido consultar el
+  calendario"), never silently.
+- **Never commit secrets.** `.env*` is gitignored; keep it that way.
+
+## Definition of Done for any code change
+
+`npm run lint` and `npm run build` must both pass. If you did not run them,
+say so explicitly (see §9).
 
 ---
+# 1. ShapingTheAxe — framework (governs how all material work is done)
+Before material work, read and follow `STA/ShapingTheAxe.md`.
+`STA/SHAPING_THE_AXE_BRAIN_SPEC.md` is the semantic authority.
+Use `STA/prompts/activate.md` for the activation receipt and fallback behavior.
+Use the minimum preparation justified by risk; do not add universal approval gates.
+If a required file is unavailable, say so instead of claiming activation.
+
 
 # 2. Capability routing
 
@@ -52,14 +81,22 @@ Do not load unnecessary capabilities.
 
 # 3. Skills
 
-Treat skills as reusable capabilities.
+Available skills are **candidate capabilities, not defaults**. They are subject
+to ShapingTheAxe's capability-selection rules (kernel §8): activate a skill only
+when its need, suitability, permissions, cost, and expected value justify it.
+Availability and prior use are not reasons by themselves.
 
-Before implementing anything:
+During the task, consider whether an available skill materially fits the work,
+and load only those the current task actually requires — no more. Several may
+apply; that is fine, but each must earn its place. Adding an unnecessary skill
+is a proportionality defect, exactly like adding an unnecessary gate.
 
-- Inspect available skills.
-- Select the minimum relevant set.
-- Combine multiple skills when appropriate.
-- Prefer existing skills over inventing new processes.
+Examples of a justified fit:
+- `nodejs-backend-patterns` — when the task is a Node backend change.
+- `brainstorming` — when opening up or reframing a new feature.
+
+If no available skill materially improves the result, use none. Silence is a
+valid outcome of capability selection.
 
 ---
 

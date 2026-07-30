@@ -739,7 +739,13 @@ The beta does not include:
 - claims of universal effectiveness;
 - a generated book.
 
-### 13.4 Current reference evidence
+### 13.4 Current evidence
+
+Current evidence exists at two distinct tiers. They MUST NOT be conflated: a
+closed reference case is stronger than an external application signal, and
+neither establishes multidomain universality.
+
+#### 13.4.1 Reference case — `ft_irc`
 
 The `ft_irc` case is closed with the following frozen result supplied by the
 project authority:
@@ -757,6 +763,27 @@ absent, the `Planning → Full-cycle` transition was not formalized, and the
 `irssi` check remains pending. The audit MUST NOT be repeated and the fixture
 MUST NOT be modified. This case validates an initial protocol execution but
 does not establish multidomain universality.
+
+#### 13.4.2 External application signal — Application 2
+
+ShapingTheAxe was applied to a real technical task assigned by an external
+technical collaborator — not a self-selected exercise — and executed with
+Claude Code:
+
+- the result was approved by the assigning collaborator;
+- the operator reports a qualitative improvement over resolving the same task
+  without the protocol;
+- the evaluation criterion originated with the third party, not the operator.
+
+This is a `signal` of external validation, not a validation. It is explicitly
+below Reference-grade: `N = 1`, qualitative, with no frozen inputs, no
+independent scoring, and no reproducibility package. The favorable contrast is
+the operator's informed judgement, not a measured metric.
+
+It raises confidence that the protocol transfers beyond its author, but it does
+not establish measured improvement or multidomain universality. Converting this
+signal into evidence requires the comparative protocol in Section 14, run with
+frozen inputs and a measured metric.
 
 ## 14. Validation
 
