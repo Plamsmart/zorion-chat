@@ -1,4 +1,4 @@
-import { cancelarReserva, getCalendario } from "@/lib/aimharder";
+import { cancelarReserva, getCalendario, getMemberships } from "@/lib/aimharder";
 import { openai } from "@/lib/openai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Bot, Canal, Conocimiento, Conversacion, Mensaje } from "@/types";
@@ -160,6 +160,27 @@ export async function obtenerCalendarioHoy(): Promise<string> {
   return formatearClasesParaPrompt(fecha, clases);
 }
 
+function precioConIva(precio: number, taxes: number): number {
+  return Math.round((precio + (precio * taxes) / 100) * 100) / 100;
+}
+
+export async function obtenerTarifas(): Promise<string> {
+  const tarifas = await getMemberships();
+
+  if (tarifas.length === 0) {
+    return "";
+  }
+
+  return tarifas
+    .map((t) => {
+      const precioFinal = precioConIva(t.price, t.taxes);
+      return `- ${t.name} (${t.type}): ${precioFinal}€ (IVA incluido)${
+        t.description ? ` — ${t.description}` : ""
+      }`;
+    })
+    .join("\n");
+}
+
 // ─── CORREGIDO: verifica tokens en Supabase, no en variables de entorno ───
 export async function aimharderEstaConfigurado(): Promise<boolean> {
   const supabase = createAdminClient();
@@ -181,6 +202,7 @@ export async function construirSystemPrompt(
     .join("\n\n");
 
   let contextoCalendario = "";
+  let contextoTarifas = "";
 
   // ─── CORREGIDO: await porque ahora es async ───
   if (await aimharderEstaConfigurado()) {
@@ -196,6 +218,8 @@ export async function construirSystemPrompt(
     contextoCalendario = fechas
       .map((fecha, i) => formatearClasesParaPrompt(fecha, clasesPorFecha[i]))
       .join("\n\n");
+
+    contextoTarifas = await obtenerTarifas();
   }
 
   return [
@@ -208,6 +232,9 @@ export async function construirSystemPrompt(
       : null,
     contextoCalendario
       ? `Calendario de clases en tiempo real:\n${contextoCalendario}`
+      : null,
+    contextoTarifas
+      ? `Tarifas disponibles en EKIN:\n${contextoTarifas}`
       : null,
     "Responde de forma clara, concisa y amable, basándote únicamente en la información anterior. Si no sabes la respuesta, dilo honestamente.",
   ]
