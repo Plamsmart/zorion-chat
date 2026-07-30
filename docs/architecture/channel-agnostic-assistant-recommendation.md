@@ -18,6 +18,9 @@ Cada afirmación de este documento está etiquetada para distinguir su naturalez
   no es una decisión tomada.
 - **[PREGUNTA ABIERTA]** — decisión pendiente que requiere autoridad humana
   antes de poder avanzar; no se resuelve en este documento.
+- **[DECISIÓN]** — decisión ya tomada por el propietario del proyecto, con
+  fecha. Sustituye a la pregunta abierta correspondiente. No se rediscute sin
+  evidencia nueva.
 
 ---
 
@@ -246,13 +249,46 @@ producto, no una suposición. No se corrige en esta fase.
 
 ## 8. Decisiones todavía abiertas
 
-**[PREGUNTA ABIERTA]** Canal(es) definitivo(s) de despliegue: WhatsApp,
-Instagram, la web de Ekin, o combinación. No se resuelve aquí; la web es hoy
-el único canal operativo confirmado.
+**[DECISIÓN · 2026-07-30]** Canales de despliegue: **web + WhatsApp**. El
+asistente debe comportarse por WhatsApp igual que por el widget web: el socio
+escribe al número de Ekin y le responde el mismo asistente. Instagram queda
+fuera de alcance. Sustituye a la pregunta abierta anterior sobre canal.
 
-**[PREGUNTA ABIERTA]** Proveedor de WhatsApp, si se decide usar WhatsApp:
-Twilio, WhatsApp Cloud API de Meta, u otro. Condiciona qué adaptador de
-canal se termina de implementar (sección 5).
+**[DECISIÓN · 2026-07-30]** Proveedor de WhatsApp: **Twilio**.
+
+Razones, en orden de peso:
+
+1. **Tiempo hasta la primera prueba real.** Partiendo de cero, Meta Cloud API
+   directo exige Business Manager y verificación del negocio de Ekin antes de
+   poder enviar un solo mensaje. El sandbox de Twilio permite probar desde un
+   móvil propio sin verificación previa, mientras el core se corrige.
+2. **Menor cambio de código.** El `POST` de `src/app/api/whatsapp/route.ts` ya
+   responde TwiML y `twilio` ya figura en `package.json`.
+3. La documentación de Twilio incluye un flujo guiado de alta que conecta la
+   cuenta de Meta, crea la WABA y verifica el número.
+
+**Coste aceptado:** Twilio aplica un margen por mensaje sobre la tarifa de
+Meta. Irrelevante con un cliente y tráfico reactivo; material a escala con
+mensajería proactiva.
+
+**Condición de reversibilidad — vinculante.** Esta decisión solo es barata de
+revertir si la limpieza del webhook híbrido (sección 5) produce un **adaptador
+de canal** conforme a la sección 4.2, y no una simple eliminación de las líneas
+de Meta. El núcleo no debe conocer al proveedor. Si se implementa sin esa
+separación, la decisión deja de ser reversible y pasa a ser un compromiso
+arquitectónico, lo que contradice la sección 4.1.
+
+**Alcance del canal en esta fase: reactivo.** El socio inicia la conversación
+y el asistente responde. Todo ello ocurre dentro de la ventana de atención al
+cliente de 24 horas de WhatsApp, que no requiere plantillas aprobadas.
+
+**[PREGUNTA ABIERTA]** Mensajería proactiva (recordatorios, anti-no-show,
+reactivación de inactivos). Fuera de la ventana de 24 horas, WhatsApp solo
+permite mensajes con plantilla aprobada previamente por Meta, facturados por
+mensaje. Esto afecta a buena parte del backlog de producto y no es un problema
+de implementación, sino de aprobación y de coste por mensaje. No se aborda en
+esta fase, pero debe planificarse antes de prometer esas funciones a un
+cliente.
 
 **[PREGUNTA ABIERTA]** Continuidad de identidad entre canales: si la misma
 persona escribe por varios canales, ¿debe reconocerse como el mismo usuario
