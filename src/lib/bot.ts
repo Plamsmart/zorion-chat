@@ -107,8 +107,19 @@ function obtenerBaseUrl() {
   return "http://localhost:3000";
 }
 
+const FORMATEADOR_FECHA_MADRID = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Madrid",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 function formatearFechaISO(fecha: Date) {
-  return fecha.toISOString().slice(0, 10);
+  // "en-CA" formatea como YYYY-MM-DD. Usamos la zona horaria de España
+  // explícitamente porque el servidor corre en UTC y `toISOString()` podía
+  // devolver el día equivocado (p. ej. de madrugada en Madrid, cuando en
+  // UTC todavía es el día anterior).
+  return FORMATEADOR_FECHA_MADRID.format(fecha);
 }
 
 function sumarDias(fecha: Date, dias: number) {
@@ -315,7 +326,7 @@ export async function detectarIntencionReserva(
 }
 
 function construirPromptExtraccionReserva() {
-  const hoy = new Date().toISOString().split("T")[0];
+  const hoy = formatearFechaISO(new Date());
 
   return `Extrae del siguiente mensaje y del historial de conversación estos datos para una reserva: nombre completo, email, teléfono, nombre de la clase, hora y fecha. La fecha debe devolverse en formato YYYY-MM-DD, interpretando expresiones relativas como "mañana", "el martes" o "el 14 de julio" tomando como referencia que hoy es ${hoy}. Responde SOLO con un JSON con estos campos: { nombre, email, telefono, clase, hora, fecha }. Si algún campo no está disponible ponlo como null.`;
 }
