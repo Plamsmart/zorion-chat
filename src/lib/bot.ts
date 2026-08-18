@@ -369,16 +369,33 @@ async function buscarClaseCoincidente(
   const fechas = fechaTexto
     ? [fechaTexto]
     : [formatearFechaISO(hoy), formatearFechaISO(sumarDias(hoy, 1))];
-  const claseNormalizada = claseTexto.toLowerCase();
-  const horaNormalizada = horaTexto?.toLowerCase();
+  const claseNormalizada = claseTexto.trim().toLowerCase();
+  const horaNormalizada = horaTexto?.trim().toLowerCase();
 
   for (const fecha of fechas) {
     const clases = await obtenerClasesCalendario(fecha);
 
     const encontrada = clases.find((c) => {
-      const nombreCoincide = c.nombre.toLowerCase().includes(claseNormalizada);
+      const nombreNormalizado = c.nombre.trim().toLowerCase();
+      const horaClaseNormalizada = c.hora.trim().toLowerCase();
+      const nombreCoincide = nombreNormalizado.includes(claseNormalizada);
       const horaCoincide =
-        !horaNormalizada || c.hora.toLowerCase().includes(horaNormalizada);
+        !horaNormalizada || horaClaseNormalizada.includes(horaNormalizada);
+
+      // TODO(debug-clase-matching): quitar una vez confirmado el origen del problema.
+      console.log("[debug-clase-matching] comparando ->", {
+        claseTexto,
+        claseNormalizada,
+        horaTexto,
+        horaNormalizada,
+        nombreCalendario: c.nombre,
+        nombreNormalizado,
+        horaCalendario: c.hora,
+        horaClaseNormalizada,
+        nombreCoincide,
+        horaCoincide,
+      });
+
       return nombreCoincide && horaCoincide;
     });
     if (encontrada) return encontrada;
