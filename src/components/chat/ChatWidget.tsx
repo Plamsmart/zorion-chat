@@ -183,7 +183,7 @@ export function ChatWidget({
                 <img
                   src={logoUrl}
                   alt=""
-                  className="h-7 w-7 rounded-full object-cover"
+                  className="h-6 max-w-[80px] object-contain"
                 />
               )}
               <span className="font-semibold">{botNombre}</span>
