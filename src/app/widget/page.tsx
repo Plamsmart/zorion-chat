@@ -4,14 +4,21 @@ import type { Bot } from "@/types";
 
 const BOT_ID_DEMO = process.env.NEXT_PUBLIC_DEMO_BOT_ID;
 
-export default async function WidgetPage() {
+export default async function WidgetPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ bot?: string }>;
+}) {
+  const { bot: botIdParam } = await searchParams;
+  const botId = botIdParam ?? BOT_ID_DEMO;
+
   const supabase = createAdminClient();
 
-  const { data: bot } = BOT_ID_DEMO
+  const { data: bot } = botId
     ? await supabase
         .from("bots")
         .select("nombre, color_primario, logo_url")
-        .eq("id", BOT_ID_DEMO)
+        .eq("id", botId)
         .maybeSingle<Pick<Bot, "nombre" | "color_primario" | "logo_url">>()
     : { data: null };
 
@@ -24,17 +31,17 @@ export default async function WidgetPage() {
         derecha para probarlo.
       </p>
 
-      {BOT_ID_DEMO ? (
+      {botId ? (
         <ChatWidget
-          botId={BOT_ID_DEMO}
+          botId={botId}
           botNombre={bot?.nombre ?? "Zorion Demo"}
           colorPrimario={bot?.color_primario ?? "#4f46e5"}
           logoUrl={bot?.logo_url}
         />
       ) : (
         <p className="text-sm text-red-500">
-          Configura la variable de entorno NEXT_PUBLIC_DEMO_BOT_ID para ver la
-          demo del widget.
+          Añade ?bot=ID_DEL_BOT en la URL o configura la variable de entorno
+          NEXT_PUBLIC_DEMO_BOT_ID para ver la demo del widget.
         </p>
       )}
     </div>
