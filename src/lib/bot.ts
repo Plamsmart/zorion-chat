@@ -446,13 +446,6 @@ export async function procesarIntencionReserva(
       (fechaSolicitada.getTime() - fechaHoy.getTime()) / (1000 * 60 * 60 * 24),
     );
 
-    // TODO(debug-antelacion-reserva): quitar una vez confirmado que OpenAI extrae bien la fecha.
-    console.log("[debug-antelacion-reserva] fecha extraída ->", {
-      mensaje,
-      "datos.fecha": datos.fecha,
-      diasDeAntelacion,
-    });
-
     if (diasDeAntelacion > 10) {
       return `Solo podemos gestionar reservas con un máximo de 10 días de antelación. La fecha que indicas (${datos.fecha}) está fuera de ese margen — escríbeme de nuevo más cerca de esa fecha para reservar.`;
     }
