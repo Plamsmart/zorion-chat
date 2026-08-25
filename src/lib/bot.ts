@@ -433,6 +433,18 @@ export async function procesarIntencionReserva(
   const historial = await obtenerHistorial(conversacionId);
   const datos = await extraerDatosReservaConIA(mensaje, historial);
 
+  if (datos.fecha) {
+    const fechaSolicitada = new Date(`${datos.fecha}T00:00:00Z`);
+    const fechaHoy = new Date(`${formatearFechaISO(new Date())}T00:00:00Z`);
+    const diasDeAntelacion = Math.round(
+      (fechaSolicitada.getTime() - fechaHoy.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (diasDeAntelacion > 10) {
+      return `Solo podemos gestionar reservas con un máximo de 10 días de antelación. La fecha que indicas (${datos.fecha}) está fuera de ese margen — escríbeme de nuevo más cerca de esa fecha para reservar.`;
+    }
+  }
+
   const faltantes: string[] = [];
   if (!datos.nombre) faltantes.push("tu nombre completo");
   if (!datos.email) faltantes.push("tu email");
