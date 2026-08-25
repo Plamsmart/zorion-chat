@@ -300,6 +300,8 @@ interface DatosReservaDetectados {
 
 const PALABRAS_CLAVE_RESERVA =
   /reserv|apuntar|apuntarme|inscrib|agendar|clase de prueba|prueba|quiero ir|me gustaría ir|puedo ir|puedo asistir|me anoto/i;
+const PALABRAS_CLAVE_EXCLUSION_RESERVA =
+  /puedo reservar|se puede reservar|es posible reservar|con cuántos días|antelación/i;
 const REGEX_EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 const REGEX_TELEFONO = /\+?\d[\d\s-]{7,}\d/;
 
@@ -311,6 +313,10 @@ export async function detectarIntencionReserva(
   texto: string,
   conversacionId?: string,
 ): Promise<boolean> {
+  if (PALABRAS_CLAVE_EXCLUSION_RESERVA.test(texto)) {
+    return false;
+  }
+
   if (PALABRAS_CLAVE_RESERVA.test(texto)) {
     return true;
   }
