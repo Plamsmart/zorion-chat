@@ -45,6 +45,9 @@ export async function POST(request: NextRequest) {
   const body = formData.get("Body")?.toString();
   const to = formData.get("To")?.toString();
 
+  // TODO(debug-whatsapp-to): quitar una vez confirmado el valor real de To.
+  console.log("[debug-whatsapp-to] campo To recibido de Twilio ->", to);
+
   if (!from || !body || !to) {
     return NextResponse.json(
       { error: "Faltan campos requeridos: From, Body, To" },
