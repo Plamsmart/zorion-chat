@@ -64,6 +64,15 @@ function parsearTexto(texto: string, colorEnlace: string) {
   return conEnlaces.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
+function pideDatosReserva(texto: string): boolean {
+  const normalizado = texto.toLowerCase();
+  return (
+    normalizado.includes("nombre completo") &&
+    normalizado.includes("email") &&
+    normalizado.includes("teléfono")
+  );
+}
+
 const TAMANO_CERRADO = { width: 70, height: 70 };
 const TAMANO_ABIERTO = { width: 420, height: 620 };
 
@@ -83,6 +92,11 @@ export function ChatWidget({
   const audioUrlsRef = useRef<Map<string, string>>(new Map());
   const [reproduciendoId, setReproduciendoId] = useState<string | null>(null);
   const [cargandoAudioId, setCargandoAudioId] = useState<string | null>(null);
+  const [datosFormularioReserva, setDatosFormularioReserva] = useState({
+    nombre: "",
+    email: "",
+    telefono: "",
+  });
 
   const colorTexto = colorTextoContraste(colorPrimario);
   const colorTinteAsistente = tinteClaro(colorPrimario);
@@ -118,6 +132,24 @@ export function ChatWidget({
     if (!texto.trim() || enviando) return;
     enviarMensaje(texto);
     setTexto("");
+  };
+
+  const ultimoMensaje = mensajes[mensajes.length - 1];
+  const mostrarFormularioReserva =
+    ultimoMensaje?.rol === "assistant" &&
+    pideDatosReserva(ultimoMensaje.contenido);
+
+  const handleSubmitFormularioReserva = (e: FormEvent) => {
+    e.preventDefault();
+    const { nombre, email, telefono } = datosFormularioReserva;
+    if (!nombre.trim() || !email.trim() || !telefono.trim() || enviando) {
+      return;
+    }
+
+    enviarMensaje(
+      `Nombre: ${nombre.trim()}, Email: ${email.trim()}, Teléfono: ${telefono.trim()}`
+    );
+    setDatosFormularioReserva({ nombre: "", email: "", telefono: "" });
   };
 
   const handleTogglePlay = async (mensaje: ChatMessage) => {
@@ -301,6 +333,66 @@ export function ChatWidget({
                 </div>
               </div>
             ))}
+            {mostrarFormularioReserva && (
+              <div className="flex justify-start">
+                <form
+                  onSubmit={handleSubmitFormularioReserva}
+                  className="w-[85%] space-y-2 rounded-2xl border p-3"
+                  style={{
+                    borderColor: colorPrimario,
+                    backgroundColor: colorTinteAsistente,
+                  }}
+                >
+                  <input
+                    type="text"
+                    required
+                    value={datosFormularioReserva.nombre}
+                    onChange={(e) =>
+                      setDatosFormularioReserva((d) => ({
+                        ...d,
+                        nombre: e.target.value,
+                      }))
+                    }
+                    placeholder="Nombre completo"
+                    className="block w-full rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-black/30"
+                  />
+                  <input
+                    type="email"
+                    required
+                    value={datosFormularioReserva.email}
+                    onChange={(e) =>
+                      setDatosFormularioReserva((d) => ({
+                        ...d,
+                        email: e.target.value,
+                      }))
+                    }
+                    placeholder="Email"
+                    className="block w-full rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-black/30"
+                  />
+                  <input
+                    type="tel"
+                    required
+                    value={datosFormularioReserva.telefono}
+                    onChange={(e) =>
+                      setDatosFormularioReserva((d) => ({
+                        ...d,
+                        telefono: e.target.value,
+                      }))
+                    }
+                    placeholder="Teléfono"
+                    className="block w-full rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-black/30"
+                  />
+                  <button
+                    type="submit"
+                    disabled={enviando}
+                    className="w-full rounded-full py-1.5 text-sm font-medium transition disabled:opacity-40"
+                    style={{ backgroundColor: colorPrimario, color: colorTexto }}
+                  >
+                    Reservar
+                  </button>
+                </form>
+              </div>
+            )}
             {escribiendo && (
               <div className="flex justify-start">
                 <div className="rounded-2xl bg-gray-200 px-3 py-2 text-sm text-gray-500">
