@@ -6,25 +6,33 @@ import {
   buscarBotActivoPorId,
   buscarOCrearConversacion,
   construirMensajesParaOpenAI,
-  detectarIntencionCancelacion,
-  detectarIntencionReserva,
+  ejecutarCancelarReserva,
+  ejecutarHacerReserva,
   guardarMensaje,
-  procesarIntencionCancelacion,
-  procesarIntencionReserva,
+  obtenerHerramientasReserva,
+  type DatosCancelarReserva,
+  type DatosHacerReserva,
 } from "@/lib/bot";
 
-function respuestaComoStream(texto: string) {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      controller.enqueue(encoder.encode(texto));
-      controller.close();
-    },
-  });
+async function ejecutarHerramienta(
+  nombre: string,
+  argumentosJSON: string
+): Promise<string> {
+  try {
+    const args = JSON.parse(argumentosJSON || "{}");
 
-  return new Response(stream, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
+    if (nombre === "hacer_reserva") {
+      return await ejecutarHacerReserva(args as DatosHacerReserva);
+    }
+
+    if (nombre === "cancelar_reserva") {
+      return await ejecutarCancelarReserva(args as DatosCancelarReserva);
+    }
+
+    return "No he podido procesar esa solicitud. ¿Puedes intentarlo de otra forma?";
+  } catch {
+    return "Ocurrió un error al procesar tu solicitud. Por favor, inténtalo de nuevo.";
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -51,38 +59,6 @@ export async function POST(request: NextRequest) {
     session_id
   );
 
-  if (
-    (await detectarIntencionCancelacion(mensaje, conversacion.id)) &&
-    (await aimharderEstaConfigurado())
-  ) {
-    const respuestaCancelacion = await procesarIntencionCancelacion(
-      mensaje,
-      conversacion.id
-    );
-
-    if (respuestaCancelacion) {
-      await guardarMensaje(conversacion.id, "user", mensaje);
-      await guardarMensaje(conversacion.id, "assistant", respuestaCancelacion);
-      return respuestaComoStream(respuestaCancelacion);
-    }
-  }
-
-  if (
-    (await detectarIntencionReserva(mensaje, conversacion.id)) &&
-    (await aimharderEstaConfigurado())
-  ) {
-    const respuestaReserva = await procesarIntencionReserva(
-      mensaje,
-      conversacion.id
-    );
-
-    if (respuestaReserva) {
-      await guardarMensaje(conversacion.id, "user", mensaje);
-      await guardarMensaje(conversacion.id, "assistant", respuestaReserva);
-      return respuestaComoStream(respuestaReserva);
-    }
-  }
-
   const messages = await construirMensajesParaOpenAI(
     bot,
     conversacion.id,
@@ -91,24 +67,54 @@ export async function POST(request: NextRequest) {
 
   await guardarMensaje(conversacion.id, "user", mensaje);
 
+  const tools = (await aimharderEstaConfigurado())
+    ? obtenerHerramientasReserva()
+    : undefined;
+
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
     messages,
+    tools,
     stream: true,
   });
 
   const encoder = new TextEncoder();
   let respuestaCompleta = "";
+  let herramienta: { nombre: string; argumentos: string } | null = null;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
         for await (const chunk of completion) {
-          const contenido = chunk.choices[0]?.delta?.content ?? "";
+          const delta = chunk.choices[0]?.delta;
+          const toolCallDelta = delta?.tool_calls?.[0];
+
+          if (toolCallDelta) {
+            const actual = herramienta ?? { nombre: "", argumentos: "" };
+            if (toolCallDelta.function?.name) {
+              actual.nombre = toolCallDelta.function.name;
+            }
+            if (toolCallDelta.function?.arguments) {
+              actual.argumentos += toolCallDelta.function.arguments;
+            }
+            herramienta = actual;
+            continue;
+          }
+
+          const contenido = delta?.content ?? "";
           if (contenido) {
             respuestaCompleta += contenido;
             controller.enqueue(encoder.encode(contenido));
           }
+        }
+
+        if (herramienta?.nombre) {
+          const resultado = await ejecutarHerramienta(
+            herramienta.nombre,
+            herramienta.argumentos
+          );
+          respuestaCompleta = resultado;
+          controller.enqueue(encoder.encode(resultado));
         }
       } catch (error) {
         console.error("Error en el stream de OpenAI:", error);

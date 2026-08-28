@@ -6,11 +6,12 @@ import {
   buscarBotActivoPorWhatsapp,
   buscarOCrearConversacion,
   construirMensajesParaOpenAI,
-  detectarIntencionCancelacion,
-  detectarIntencionReserva,
+  ejecutarCancelarReserva,
+  ejecutarHacerReserva,
   guardarMensaje,
-  procesarIntencionCancelacion,
-  procesarIntencionReserva,
+  obtenerHerramientasReserva,
+  type DatosCancelarReserva,
+  type DatosHacerReserva,
 } from "@/lib/bot";
 
 export async function GET(request: NextRequest) {
@@ -35,6 +36,27 @@ function construirTwiML(mensaje: string) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Message>${escaparXml(
     mensaje
   )}</Message>\n</Response>`;
+}
+
+async function ejecutarHerramienta(
+  nombre: string,
+  argumentosJSON: string
+): Promise<string> {
+  try {
+    const args = JSON.parse(argumentosJSON || "{}");
+
+    if (nombre === "hacer_reserva") {
+      return await ejecutarHacerReserva(args as DatosHacerReserva);
+    }
+
+    if (nombre === "cancelar_reserva") {
+      return await ejecutarCancelarReserva(args as DatosCancelarReserva);
+    }
+
+    return "No he podido procesar esa solicitud. ¿Puedes intentarlo de otra forma?";
+  } catch {
+    return "Ocurrió un error al procesar tu solicitud. Por favor, inténtalo de nuevo.";
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -66,44 +88,6 @@ export async function POST(request: NextRequest) {
     from
   );
 
-  if (
-    (await detectarIntencionCancelacion(body, conversacion.id)) &&
-    (await aimharderEstaConfigurado())
-  ) {
-    const respuestaCancelacion = await procesarIntencionCancelacion(
-      body,
-      conversacion.id
-    );
-
-    if (respuestaCancelacion) {
-      await guardarMensaje(conversacion.id, "user", body);
-      await guardarMensaje(conversacion.id, "assistant", respuestaCancelacion);
-
-      return new Response(construirTwiML(respuestaCancelacion), {
-        headers: { "Content-Type": "text/xml" },
-      });
-    }
-  }
-
-  if (
-    (await detectarIntencionReserva(body, conversacion.id)) &&
-    (await aimharderEstaConfigurado())
-  ) {
-    const respuestaReserva = await procesarIntencionReserva(
-      body,
-      conversacion.id
-    );
-
-    if (respuestaReserva) {
-      await guardarMensaje(conversacion.id, "user", body);
-      await guardarMensaje(conversacion.id, "assistant", respuestaReserva);
-
-      return new Response(construirTwiML(respuestaReserva), {
-        headers: { "Content-Type": "text/xml" },
-      });
-    }
-  }
-
   const messages = await construirMensajesParaOpenAI(
     bot,
     conversacion.id,
@@ -112,10 +96,30 @@ export async function POST(request: NextRequest) {
 
   await guardarMensaje(conversacion.id, "user", body);
 
+  const tools = (await aimharderEstaConfigurado())
+    ? obtenerHerramientasReserva()
+    : undefined;
+
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
     messages,
+    tools,
   });
+
+  const toolCall = completion.choices[0]?.message?.tool_calls?.[0];
+
+  if (toolCall && toolCall.type === "function") {
+    const resultado = await ejecutarHerramienta(
+      toolCall.function.name,
+      toolCall.function.arguments
+    );
+
+    await guardarMensaje(conversacion.id, "assistant", resultado);
+
+    return new Response(construirTwiML(resultado), {
+      headers: { "Content-Type": "text/xml" },
+    });
+  }
 
   const respuesta = completion.choices[0]?.message?.content?.trim() ?? "";
 

@@ -1,5 +1,4 @@
 import { cancelarReserva, getCalendario, getMemberships } from "@/lib/aimharder";
-import { openai } from "@/lib/openai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Bot, Canal, Conocimiento, Conversacion, Mensaje } from "@/types";
 
@@ -289,114 +288,6 @@ export async function guardarMensaje(
   });
 }
 
-interface DatosReservaDetectados {
-  nombre?: string;
-  email?: string;
-  telefono?: string;
-  clase?: string;
-  hora?: string;
-  fecha?: string;
-}
-
-const PALABRAS_CLAVE_RESERVA =
-  /reserv|apuntar|apuntarme|inscrib|agendar|clase de prueba|prueba|quiero ir|me gustaría ir|puedo ir|puedo asistir|me anoto/i;
-const PALABRAS_CLAVE_EXCLUSION_RESERVA =
-  /puedo reservar|se puede reservar|es posible reservar|con cuántos días|antelación/i;
-const REGEX_EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-const REGEX_TELEFONO = /\+?\d[\d\s-]{7,}\d/;
-
-function contieneDatosReserva(texto: string): boolean {
-  return REGEX_EMAIL.test(texto) || REGEX_TELEFONO.test(texto);
-}
-
-const PALABRAS_CLAVE_CONFIRMACION_CORTA =
-  /^(si|sí|ok|dale|perfecto|claro|adelante|venga)[.!¡¿?]*$/i;
-const PALABRAS_CLAVE_CONTEXTO_RESERVA =
-  /reservar|booking|clase de prueba|procedo|confirmar/i;
-
-export async function detectarIntencionReserva(
-  texto: string,
-  conversacionId?: string,
-): Promise<boolean> {
-  if (PALABRAS_CLAVE_EXCLUSION_RESERVA.test(texto)) {
-    return false;
-  }
-
-  if (PALABRAS_CLAVE_RESERVA.test(texto)) {
-    return true;
-  }
-
-  if (!conversacionId) {
-    return false;
-  }
-
-  const historial = await obtenerHistorial(conversacionId);
-
-  if (PALABRAS_CLAVE_CONFIRMACION_CORTA.test(texto.trim())) {
-    const ultimosMensajesAsistente = historial
-      .filter((m) => m.rol === "assistant")
-      .slice(-3);
-
-    if (
-      ultimosMensajesAsistente.some((m) =>
-        PALABRAS_CLAVE_CONTEXTO_RESERVA.test(m.contenido),
-      )
-    ) {
-      return true;
-    }
-  }
-
-  return historial.some(
-    (m) => m.rol === "user" && PALABRAS_CLAVE_RESERVA.test(m.contenido),
-  );
-}
-
-function construirPromptExtraccionReserva() {
-  const hoy = formatearFechaISO(new Date());
-
-  return `Extrae del siguiente mensaje y del historial de conversación estos datos para una reserva: nombre completo, email, teléfono, nombre de la clase, hora y fecha. La fecha debe devolverse en formato YYYY-MM-DD, interpretando expresiones relativas como "mañana", "el martes" o "el 14 de julio" tomando como referencia que hoy es ${hoy}. Responde SOLO con un JSON con estos campos: { nombre, email, telefono, clase, hora, fecha }. Si algún campo no está disponible ponlo como null.`;
-}
-
-interface DatosExtraidosIA {
-  nombre: string | null;
-  email: string | null;
-  telefono: string | null;
-  clase: string | null;
-  hora: string | null;
-  fecha: string | null;
-}
-
-async function extraerDatosReservaConIA(
-  mensaje: string,
-  historial: Mensaje[],
-): Promise<DatosReservaDetectados> {
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o",
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: construirPromptExtraccionReserva() },
-      ...historial.map((m) => ({ role: m.rol, content: m.contenido })),
-      { role: "user", content: mensaje },
-    ],
-  });
-
-  const contenido = completion.choices[0]?.message?.content ?? "{}";
-
-  try {
-    const datos = JSON.parse(contenido) as DatosExtraidosIA;
-    return {
-      nombre: datos.nombre ?? undefined,
-      email: datos.email ?? undefined,
-      telefono: datos.telefono ?? undefined,
-      clase: datos.clase ?? undefined,
-      hora: datos.hora ?? undefined,
-      fecha: datos.fecha ?? undefined,
-    };
-  } catch {
-    return {};
-  }
-}
-
 async function buscarClaseCoincidente(
   claseTexto: string,
   horaTexto?: string,
@@ -418,21 +309,6 @@ async function buscarClaseCoincidente(
       const nombreCoincide = nombreNormalizado.includes(claseNormalizada);
       const horaCoincide =
         !horaNormalizada || horaClaseNormalizada.includes(horaNormalizada);
-
-      // TODO(debug-clase-matching): quitar una vez confirmado el origen del problema.
-      console.log("[debug-clase-matching] comparando ->", {
-        claseTexto,
-        claseNormalizada,
-        horaTexto,
-        horaNormalizada,
-        nombreCalendario: c.nombre,
-        nombreNormalizado,
-        horaCalendario: c.hora,
-        horaClaseNormalizada,
-        nombreCoincide,
-        horaCoincide,
-      });
-
       return nombreCoincide && horaCoincide;
     });
     if (encontrada) return encontrada;
@@ -441,71 +317,114 @@ async function buscarClaseCoincidente(
   return null;
 }
 
+export interface DatosHacerReserva {
+  nombre: string;
+  email: string;
+  telefono: string;
+  clase: string;
+  fecha: string;
+  hora: string;
+}
+
+export interface DatosCancelarReserva {
+  booking_id: number;
+}
+
 /**
- * Detecta intención de reserva a lo largo de la conversación (historial +
- * mensaje actual), acumula los datos necesarios y, cuando están completos,
- * llama al endpoint de reserva. Devuelve `null` si no hay intención de
- * reserva, o el texto que el bot debe responder (petición de datos
- * faltantes, error, o confirmación con booking_id).
+ * Herramientas (function calling) que se le pasan a OpenAI para que pueda
+ * gestionar reservas y cancelaciones en Aimharder directamente, en vez de
+ * detectar la intención por palabras clave.
  */
-export async function procesarIntencionReserva(
-  mensaje: string,
-  conversacionId: string,
-): Promise<string | null> {
-  if (!PALABRAS_CLAVE_RESERVA.test(mensaje) && !contieneDatosReserva(mensaje)) {
-    return null;
+export function obtenerHerramientasReserva() {
+  return [
+    {
+      type: "function" as const,
+      function: {
+        name: "hacer_reserva",
+        description:
+          "Reserva una clase para el usuario en Aimharder. Solo debe llamarse cuando ya se tienen todos los datos necesarios (nombre, email, teléfono, clase, fecha y hora).",
+        parameters: {
+          type: "object",
+          properties: {
+            nombre: {
+              type: "string",
+              description: "Nombre completo del usuario",
+            },
+            email: { type: "string", description: "Email del usuario" },
+            telefono: { type: "string", description: "Teléfono del usuario" },
+            clase: {
+              type: "string",
+              description:
+                "Nombre de la clase a reservar, tal como aparece en el calendario",
+            },
+            fecha: {
+              type: "string",
+              description: "Fecha de la clase en formato YYYY-MM-DD",
+            },
+            hora: {
+              type: "string",
+              description: "Hora de la clase en formato HH:MM",
+            },
+          },
+          required: ["nombre", "email", "telefono", "clase", "fecha", "hora"],
+        },
+      },
+    },
+    {
+      type: "function" as const,
+      function: {
+        name: "cancelar_reserva",
+        description:
+          "Cancela una reserva existente del usuario en Aimharder usando su número de booking.",
+        parameters: {
+          type: "object",
+          properties: {
+            booking_id: {
+              type: "number",
+              description: "Número de booking de la reserva a cancelar",
+            },
+          },
+          required: ["booking_id"],
+        },
+      },
+    },
+  ];
+}
+
+const MENSAJE_RESERVA_FALLIDA =
+  "Lo siento, no pude completar tu reserva en este momento. Por favor intenta de nuevo o contacta directamente con Ekin: https://ekinwellnesstraining.aimharder.com/boxmemberships";
+
+/** Ejecuta la herramienta `hacer_reserva` con los argumentos que devolvió OpenAI. */
+export async function ejecutarHacerReserva(
+  args: DatosHacerReserva,
+): Promise<string> {
+  const fechaSolicitada = new Date(`${args.fecha}T00:00:00Z`);
+  const fechaHoy = new Date(`${formatearFechaISO(new Date())}T00:00:00Z`);
+  const diasDeAntelacion = Math.round(
+    (fechaSolicitada.getTime() - fechaHoy.getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  if (diasDeAntelacion > 10) {
+    return `Solo podemos gestionar reservas con un máximo de 10 días de antelación. La fecha que indicas (${args.fecha}) está fuera de ese margen — escríbeme de nuevo más cerca de esa fecha para reservar.`;
   }
 
-  const historial = await obtenerHistorial(conversacionId);
-  const datos = await extraerDatosReservaConIA(mensaje, historial);
-
-  if (datos.fecha) {
-    const fechaSolicitada = new Date(`${datos.fecha}T00:00:00Z`);
-    const fechaHoy = new Date(`${formatearFechaISO(new Date())}T00:00:00Z`);
-    const diasDeAntelacion = Math.round(
-      (fechaSolicitada.getTime() - fechaHoy.getTime()) / (1000 * 60 * 60 * 24),
-    );
-
-    if (diasDeAntelacion > 10) {
-      return `Solo podemos gestionar reservas con un máximo de 10 días de antelación. La fecha que indicas (${datos.fecha}) está fuera de ese margen — escríbeme de nuevo más cerca de esa fecha para reservar.`;
-    }
-  }
-
-  const faltantes: string[] = [];
-  if (!datos.nombre) faltantes.push("tu nombre completo");
-  if (!datos.email) faltantes.push("tu email");
-  if (!datos.telefono) faltantes.push("tu teléfono");
-  if (!datos.clase)
-    faltantes.push("el nombre de la clase que quieres reservar");
-  if (!datos.hora) faltantes.push("la hora de la clase");
-
-  if (faltantes.length > 0) {
-    return `Para completar tu reserva necesito que me indiques: ${faltantes.join(
-      ", ",
-    )}.`;
-  }
-
-  const fechaReserva = datos.fecha ?? formatearFechaISO(new Date());
   const clase = await buscarClaseCoincidente(
-    datos.clase!,
-    datos.hora,
-    fechaReserva,
+    args.clase,
+    args.hora,
+    args.fecha,
   );
 
   if (!clase) {
-    return `No encontré ninguna clase que coincida con "${datos.clase} a las ${datos.hora}" en el calendario del ${fechaReserva}. ¿Puedes indicarme el nombre u horario exacto tal como aparece en el calendario?`;
+    return `No encontré ninguna clase que coincida con "${args.clase} a las ${args.hora}" en el calendario del ${args.fecha}. ¿Puedes indicarme el nombre u horario exacto tal como aparece en el calendario?`;
   }
 
   const payload = {
-    fecha: fechaReserva,
+    fecha: args.fecha,
     claseId: clase.id,
-    nombre: datos.nombre,
-    email: datos.email,
-    telefono: datos.telefono,
+    nombre: args.nombre,
+    email: args.email,
+    telefono: args.telefono,
   };
-
-  const MENSAJE_RESERVA_FALLIDA =
-    "Lo siento, no pude completar tu reserva en este momento. Por favor intenta de nuevo o contacta directamente con Ekin: https://ekinwellnesstraining.aimharder.com/boxmemberships";
 
   try {
     const respuesta = await fetch(`${obtenerBaseUrl()}/api/aimharder/reserva`, {
@@ -518,12 +437,6 @@ export async function procesarIntencionReserva(
       bookingId?: number | null;
       error?: unknown;
     };
-
-    // TODO(debug-reserva-verificacion): quitar una vez confirmado que /api/aimharder/reserva responde correctamente.
-    console.log(
-      "[debug-reserva-verificacion] respuesta de /api/aimharder/reserva ->",
-      { status: respuesta.status, ok: respuesta.ok, cuerpo },
-    );
 
     if (!respuesta.ok) {
       return MENSAJE_RESERVA_FALLIDA;
@@ -541,65 +454,19 @@ export async function procesarIntencionReserva(
       );
     }
 
-    return `¡Listo, ${datos.nombre}! Tu reserva para "${clase.nombre}" (${clase.hora}) ha sido confirmada. Número de reserva: ${bookingId}.`;
-  } catch (error) {
-    // TODO(debug-reserva-verificacion): quitar una vez confirmado que /api/aimharder/reserva responde correctamente.
-    console.log("[debug-reserva-verificacion] error en la reserva ->", error);
-
+    return `¡Listo, ${args.nombre}! Tu reserva para "${clase.nombre}" (${clase.hora}) ha sido confirmada. Número de reserva: ${bookingId}.`;
+  } catch {
     return MENSAJE_RESERVA_FALLIDA;
   }
 }
 
-const PALABRAS_CLAVE_CANCELACION =
-  /cancelar|anular|borrar reserva|quitar reserva|darme de baja de la clase/i;
-const REGEX_BOOKING_ID = /\b\d{5,}\b/;
-
-export async function detectarIntencionCancelacion(
-  texto: string,
-  conversacionId?: string
-): Promise<boolean> {
-  if (PALABRAS_CLAVE_CANCELACION.test(texto)) {
-    return true;
-  }
-
-  if (!conversacionId) {
-    return false;
-  }
-
-  const historial = await obtenerHistorial(conversacionId);
-  return historial.some(
-    (m) => m.rol === "user" && PALABRAS_CLAVE_CANCELACION.test(m.contenido)
-  );
-}
-
-/**
- * Detecta intención de cancelación en el mensaje actual, pide el número de
- * booking si falta y, cuando lo tiene, cancela la reserva en Aimharder.
- * Devuelve `null` si el mensaje actual no tiene intención de cancelación ni
- * un número de booking reconocible.
- */
-export async function procesarIntencionCancelacion(
-  mensaje: string,
-  conversacionId: string
-): Promise<string | null> {
-  if (
-    !PALABRAS_CLAVE_CANCELACION.test(mensaje) &&
-    !REGEX_BOOKING_ID.test(mensaje)
-  ) {
-    return null;
-  }
-
-  const bookingIdTexto = mensaje.match(REGEX_BOOKING_ID)?.[0];
-
-  if (!bookingIdTexto) {
-    return "Para cancelar tu reserva necesito el número de booking que recibiste en este chat cuando confirmaste tu reserva. ¿Me lo puedes indicar?";
-  }
-
-  const bookingId = Number(bookingIdTexto);
-
+/** Ejecuta la herramienta `cancelar_reserva` con los argumentos que devolvió OpenAI. */
+export async function ejecutarCancelarReserva(
+  args: DatosCancelarReserva,
+): Promise<string> {
   try {
-    await cancelarReserva(bookingId);
-    return `Listo, tu reserva con número de booking ${bookingId} ha sido cancelada.`;
+    await cancelarReserva(args.booking_id);
+    return `Listo, tu reserva con número de booking ${args.booking_id} ha sido cancelada.`;
   } catch (error) {
     const detalleError =
       error instanceof Error ? error.message : JSON.stringify(error);
