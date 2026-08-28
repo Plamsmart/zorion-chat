@@ -592,7 +592,7 @@ export async function procesarIntencionCancelacion(
   const bookingIdTexto = mensaje.match(REGEX_BOOKING_ID)?.[0];
 
   if (!bookingIdTexto) {
-    return "Para cancelar tu reserva necesito el número de booking (te lo enviaron por email cuando reservaste). ¿Me lo puedes indicar?";
+    return "Para cancelar tu reserva necesito el número de booking que recibiste en este chat cuando confirmaste tu reserva. ¿Me lo puedes indicar?";
   }
 
   const bookingId = Number(bookingIdTexto);
