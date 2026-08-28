@@ -484,6 +484,9 @@ export async function procesarIntencionReserva(
     telefono: datos.telefono,
   };
 
+  const MENSAJE_RESERVA_FALLIDA =
+    "Lo siento, no pude completar tu reserva en este momento. Por favor intenta de nuevo o contacta directamente con Ekin: https://ekinwellnesstraining.aimharder.com/boxmemberships";
+
   try {
     const respuesta = await fetch(`${obtenerBaseUrl()}/api/aimharder/reserva`, {
       method: "POST",
@@ -492,29 +495,38 @@ export async function procesarIntencionReserva(
     });
 
     const cuerpo = (await respuesta.json()) as {
-      bookingId?: number;
+      bookingId?: number | null;
       error?: unknown;
     };
 
-    if (!respuesta.ok) {
-      const detalleError =
-        typeof cuerpo.error === "string"
-          ? cuerpo.error
-          : cuerpo.error !== undefined
-            ? JSON.stringify(cuerpo.error)
-            : undefined;
+    // TODO(debug-reserva-verificacion): quitar una vez confirmado que /api/aimharder/reserva responde correctamente.
+    console.log(
+      "[debug-reserva-verificacion] respuesta de /api/aimharder/reserva ->",
+      { status: respuesta.status, ok: respuesta.ok, cuerpo },
+    );
 
-      return `No se pudo completar la reserva${
-        detalleError ? `: ${detalleError}` : ""
-      }. Por favor, inténtalo de nuevo más tarde.`;
+    if (!respuesta.ok) {
+      return MENSAJE_RESERVA_FALLIDA;
     }
 
-    return `¡Listo, ${datos.nombre}! Tu reserva para "${clase.nombre}" (${clase.hora}) ha sido confirmada. Número de reserva: ${cuerpo.bookingId}.`;
-  } catch (error) {
-    const detalleError =
-      error instanceof Error ? error.message : JSON.stringify(error);
+    const bookingId = cuerpo.bookingId;
+    const bookingIdValido =
+      typeof bookingId === "number" &&
+      Number.isFinite(bookingId) &&
+      bookingId > 0;
 
-    return `Ocurrió un error al procesar tu reserva: ${detalleError}. Por favor, inténtalo de nuevo más tarde.`;
+    if (!bookingIdValido) {
+      throw new Error(
+        `Respuesta de reserva sin bookingId numérico válido: ${JSON.stringify(cuerpo)}`,
+      );
+    }
+
+    return `¡Listo, ${datos.nombre}! Tu reserva para "${clase.nombre}" (${clase.hora}) ha sido confirmada. Número de reserva: ${bookingId}.`;
+  } catch (error) {
+    // TODO(debug-reserva-verificacion): quitar una vez confirmado que /api/aimharder/reserva responde correctamente.
+    console.log("[debug-reserva-verificacion] error en la reserva ->", error);
+
+    return MENSAJE_RESERVA_FALLIDA;
   }
 }
 
