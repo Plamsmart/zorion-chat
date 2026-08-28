@@ -67,7 +67,7 @@ function parsearTexto(texto: string, colorEnlace: string) {
 function pideDatosReserva(texto: string): boolean {
   const normalizado = texto.toLowerCase();
   return (
-    normalizado.includes("nombre completo") &&
+    normalizado.includes("nombre") &&
     normalizado.includes("email") &&
     normalizado.includes("teléfono")
   );
