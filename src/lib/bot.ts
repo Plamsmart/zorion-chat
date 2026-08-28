@@ -309,6 +309,11 @@ function contieneDatosReserva(texto: string): boolean {
   return REGEX_EMAIL.test(texto) || REGEX_TELEFONO.test(texto);
 }
 
+const PALABRAS_CLAVE_CONFIRMACION_CORTA =
+  /^(si|sí|ok|dale|perfecto|claro|adelante|venga)[.!¡¿?]*$/i;
+const PALABRAS_CLAVE_CONTEXTO_RESERVA =
+  /reservar|booking|clase de prueba|procedo|confirmar/i;
+
 export async function detectarIntencionReserva(
   texto: string,
   conversacionId?: string,
@@ -326,6 +331,21 @@ export async function detectarIntencionReserva(
   }
 
   const historial = await obtenerHistorial(conversacionId);
+
+  if (PALABRAS_CLAVE_CONFIRMACION_CORTA.test(texto.trim())) {
+    const ultimosMensajesAsistente = historial
+      .filter((m) => m.rol === "assistant")
+      .slice(-3);
+
+    if (
+      ultimosMensajesAsistente.some((m) =>
+        PALABRAS_CLAVE_CONTEXTO_RESERVA.test(m.contenido),
+      )
+    ) {
+      return true;
+    }
+  }
+
   return historial.some(
     (m) => m.rol === "user" && PALABRAS_CLAVE_RESERVA.test(m.contenido),
   );
