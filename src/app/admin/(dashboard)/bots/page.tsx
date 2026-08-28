@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, esSuperAdmin, getUsuarioActual } from "@/lib/supabase/server";
 import { DeleteBotButton } from "@/components/admin/DeleteBotButton";
 import { CopyableId } from "@/components/admin/CopyableId";
 import type { Bot } from "@/types";
 
 export default async function BotsPage() {
+  const usuario = await getUsuarioActual();
+  const esAdmin = esSuperAdmin(usuario);
+
   // Cliente con la sesión del usuario (no el admin/service role): las RLS
   // policies de la tabla `bots` filtran automáticamente por owner_id,
   // salvo para el super-admin, que las ve todas.
@@ -20,12 +23,14 @@ export default async function BotsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">Bots</h1>
-        <Link
-          href="/admin/bots/nuevo"
-          className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/80"
-        >
-          Nuevo bot
-        </Link>
+        {esAdmin && (
+          <Link
+            href="/admin/bots/nuevo"
+            className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/80"
+          >
+            Nuevo bot
+          </Link>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
@@ -78,7 +83,9 @@ export default async function BotsPage() {
                     >
                       Editar
                     </Link>
-                    <DeleteBotButton botId={bot.id} botNombre={bot.nombre} />
+                    {esAdmin && (
+                      <DeleteBotButton botId={bot.id} botNombre={bot.nombre} />
+                    )}
                   </div>
                 </td>
               </tr>
