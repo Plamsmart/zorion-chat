@@ -7,6 +7,7 @@ export interface Bot {
   logo_url: string | null;
   activo: boolean;
   whatsapp_numero: string | null;
+  owner_id: string | null;
   created_at: string;
 }
 
@@ -36,5 +37,6 @@ export interface Conocimiento {
   titulo: string | null;
   contenido: string;
   activo: boolean;
+  owner_id: string | null;
   created_at: string;
 }

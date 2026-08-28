@@ -26,3 +26,25 @@ export async function createClient() {
     }
   );
 }
+
+/** Email del super-admin: ve y gestiona los bots de todos los usuarios. */
+export const EMAIL_SUPER_ADMIN = "zorionagencia@gmail.com";
+
+/**
+ * Devuelve el usuario autenticado actual (o `null` si no hay sesión).
+ * Usa `getUser()` en vez de `getSession()` porque revalida el token contra
+ * el servidor de Supabase en lugar de confiar en la cookie sin más.
+ */
+export async function getUsuarioActual() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user;
+}
+
+/** `true` si el usuario (o su ausencia) corresponde al super-admin. */
+export function esSuperAdmin(usuario: { email?: string | null } | null) {
+  return usuario?.email === EMAIL_SUPER_ADMIN;
+}

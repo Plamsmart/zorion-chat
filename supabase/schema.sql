@@ -15,17 +15,43 @@ create table if not exists public.bots (
   logo_url         text,
   activo           boolean not null default true,
   whatsapp_numero  text,
+  owner_id         uuid references auth.users(id) on delete cascade,
   created_at       timestamptz not null default now()
 );
 
+-- Multi-tenant: por si la tabla ya existía sin esta columna.
+alter table public.bots add column if not exists owner_id uuid references auth.users(id) on delete cascade;
+
 alter table public.bots enable row level security;
 
-create policy "bots_authenticated_all"
+drop policy if exists "bots_authenticated_all" on public.bots;
+
+-- zorionagencia@gmail.com actúa como super-admin y ve/gestiona todos los bots;
+-- el resto de usuarios solo ven y gestionan los suyos (owner_id = auth.uid()).
+create policy "bots_owner_select"
   on public.bots
-  for all
+  for select
   to authenticated
-  using (true)
-  with check (true);
+  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+
+create policy "bots_owner_insert"
+  on public.bots
+  for insert
+  to authenticated
+  with check (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+
+create policy "bots_owner_update"
+  on public.bots
+  for update
+  to authenticated
+  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com')
+  with check (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+
+create policy "bots_owner_delete"
+  on public.bots
+  for delete
+  to authenticated
+  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
 
 -- =========================================================
 -- 2. conversaciones — historial de chats
@@ -86,17 +112,41 @@ create table if not exists public.conocimiento (
   titulo      text,
   contenido   text not null,
   activo      boolean not null default true,
+  owner_id    uuid references auth.users(id) on delete cascade,
   created_at  timestamptz not null default now()
 );
 
+-- Multi-tenant: por si la tabla ya existía sin esta columna.
+alter table public.conocimiento add column if not exists owner_id uuid references auth.users(id) on delete cascade;
+
 alter table public.conocimiento enable row level security;
 
-create policy "conocimiento_authenticated_all"
+drop policy if exists "conocimiento_authenticated_all" on public.conocimiento;
+
+create policy "conocimiento_owner_select"
   on public.conocimiento
-  for all
+  for select
   to authenticated
-  using (true)
-  with check (true);
+  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+
+create policy "conocimiento_owner_insert"
+  on public.conocimiento
+  for insert
+  to authenticated
+  with check (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+
+create policy "conocimiento_owner_update"
+  on public.conocimiento
+  for update
+  to authenticated
+  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com')
+  with check (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+
+create policy "conocimiento_owner_delete"
+  on public.conocimiento
+  for delete
+  to authenticated
+  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
 
 -- =========================================================
 -- 5. aimharder_tokens — persistencia de tokens de la integración Aimharder
@@ -120,3 +170,20 @@ create index if not exists idx_conversaciones_bot_id on public.conversaciones (b
 create index if not exists idx_conversaciones_canal on public.conversaciones (canal);
 create index if not exists idx_mensajes_conversacion_id on public.mensajes (conversacion_id);
 create index if not exists idx_conocimiento_bot_id on public.conocimiento (bot_id);
+create index if not exists idx_bots_owner_id on public.bots (owner_id);
+create index if not exists idx_conocimiento_owner_id on public.conocimiento (owner_id);
+
+-- =========================================================
+-- Migración: asignar los bots/conocimiento existentes (owner_id nulo)
+-- al super-admin, para que queden consistentes tras activar multi-tenant.
+-- Idempotente: no hace nada si el email no existe o ya no quedan nulos.
+-- =========================================================
+update public.bots
+set owner_id = (select id from auth.users where email = 'zorionagencia@gmail.com')
+where owner_id is null
+  and exists (select 1 from auth.users where email = 'zorionagencia@gmail.com');
+
+update public.conocimiento
+set owner_id = (select id from auth.users where email = 'zorionagencia@gmail.com')
+where owner_id is null
+  and exists (select 1 from auth.users where email = 'zorionagencia@gmail.com');

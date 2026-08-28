@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { DeleteBotButton } from "@/components/admin/DeleteBotButton";
 import { CopyableId } from "@/components/admin/CopyableId";
 import type { Bot } from "@/types";
 
 export default async function BotsPage() {
-  const supabase = createAdminClient();
+  // Cliente con la sesión del usuario (no el admin/service role): las RLS
+  // policies de la tabla `bots` filtran automáticamente por owner_id,
+  // salvo para el super-admin, que las ve todas.
+  const supabase = await createClient();
 
   const { data: bots } = await supabase
     .from("bots")
