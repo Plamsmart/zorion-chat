@@ -46,5 +46,5 @@ export async function getUsuarioActual() {
 
 /** `true` si el usuario (o su ausencia) corresponde al super-admin. */
 export function esSuperAdmin(usuario: { email?: string | null } | null) {
-  return usuario?.email === EMAIL_SUPER_ADMIN;
+  return usuario?.email?.toLowerCase() === EMAIL_SUPER_ADMIN;
 }

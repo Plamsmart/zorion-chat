@@ -32,26 +32,26 @@ create policy "bots_owner_select"
   on public.bots
   for select
   to authenticated
-  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+  using (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com');
 
 create policy "bots_owner_insert"
   on public.bots
   for insert
   to authenticated
-  with check (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+  with check (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com');
 
 create policy "bots_owner_update"
   on public.bots
   for update
   to authenticated
-  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com')
-  with check (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+  using (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com')
+  with check (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com');
 
 create policy "bots_owner_delete"
   on public.bots
   for delete
   to authenticated
-  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+  using (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com');
 
 -- =========================================================
 -- 2. conversaciones — historial de chats
@@ -127,26 +127,26 @@ create policy "conocimiento_owner_select"
   on public.conocimiento
   for select
   to authenticated
-  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+  using (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com');
 
 create policy "conocimiento_owner_insert"
   on public.conocimiento
   for insert
   to authenticated
-  with check (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+  with check (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com');
 
 create policy "conocimiento_owner_update"
   on public.conocimiento
   for update
   to authenticated
-  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com')
-  with check (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+  using (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com')
+  with check (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com');
 
 create policy "conocimiento_owner_delete"
   on public.conocimiento
   for delete
   to authenticated
-  using (owner_id = auth.uid() or auth.email() = 'zorionagencia@gmail.com');
+  using (owner_id = auth.uid() or lower(auth.email()) = 'zorionagencia@gmail.com');
 
 -- =========================================================
 -- 5. aimharder_tokens — persistencia de tokens de la integración Aimharder
@@ -179,11 +179,11 @@ create index if not exists idx_conocimiento_owner_id on public.conocimiento (own
 -- Idempotente: no hace nada si el email no existe o ya no quedan nulos.
 -- =========================================================
 update public.bots
-set owner_id = (select id from auth.users where email = 'zorionagencia@gmail.com')
+set owner_id = (select id from auth.users where lower(email) = 'zorionagencia@gmail.com')
 where owner_id is null
-  and exists (select 1 from auth.users where email = 'zorionagencia@gmail.com');
+  and exists (select 1 from auth.users where lower(email) = 'zorionagencia@gmail.com');
 
 update public.conocimiento
-set owner_id = (select id from auth.users where email = 'zorionagencia@gmail.com')
+set owner_id = (select id from auth.users where lower(email) = 'zorionagencia@gmail.com')
 where owner_id is null
-  and exists (select 1 from auth.users where email = 'zorionagencia@gmail.com');
+  and exists (select 1 from auth.users where lower(email) = 'zorionagencia@gmail.com');
